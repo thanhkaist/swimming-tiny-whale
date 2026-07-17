@@ -36,6 +36,7 @@ class Whale:
 
         # Lazily built, tilt/flap dependent sprite cache.
         self._sprite_cache: dict[int, pygame.Surface] = {}
+        self._glow: pygame.Surface | None = None
 
     # ------------------------------------------------------------------ #
     # Physics
@@ -124,10 +125,19 @@ class Whale:
         return sprite
 
     def draw(self, target: pygame.Surface, offset: tuple[float, float] = (0.0, 0.0)) -> None:
-        """Draw the whale onto ``target``, applying tilt via rotation."""
+        """Draw the whale onto ``target`` — soft glow halo, then tilted sprite."""
+        cx, cy = self.x + offset[0], self.y + offset[1]
+
+        if self._glow is None:
+            from assets import draw  # rendering-only dependency
+
+            self._glow = draw.radial_glow(int(self.width * 0.95), config.WHALE_GLOW, 70)
+        glow_rect = self._glow.get_rect(center=(cx, cy))
+        target.blit(self._glow, glow_rect)
+
         sprite = self._get_sprite()
         rotated = pygame.transform.rotate(sprite, self.tilt)
-        rect = rotated.get_rect(center=(self.x + offset[0], self.y + offset[1]))
+        rect = rotated.get_rect(center=(cx, cy))
         target.blit(rotated, rect)
 
     # ------------------------------------------------------------------ #

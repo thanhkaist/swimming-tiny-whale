@@ -168,6 +168,9 @@ def build_whale_surface(flap_phase: float) -> pygame.Surface:
     )
 
     # --- Body (rounded blob) ------------------------------------------------
+    # Soft darker outline first (a slightly larger blob) for definition.
+    outline_pts = _blob_points(body_cx, body_cy, body_rx + 2.2, body_ry + 2.2)
+    pygame.draw.polygon(surf, config.WHALE_OUTLINE, outline_pts)
     body_pts = _blob_points(body_cx, body_cy, body_rx, body_ry)
     pygame.draw.polygon(surf, config.WHALE_BODY, body_pts)
     # Lighter top for a soft top-lit look.

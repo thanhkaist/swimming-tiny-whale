@@ -340,7 +340,9 @@ class Game:
         self._text("medium", f"Score  {self.score}", config.TEXT_COLOR, (inner_cx, prect.top + 100))
         best_label = "New Best!  " + str(self.highscore) if self.new_best else f"Best  {self.highscore}"
         best_color = config.TEXT_ACCENT if self.new_best else config.TEXT_COLOR
-        self._text("medium", best_label, best_color, (inner_cx, prect.top + 138))
+        best_rect = self._text("medium", best_label, best_color, (inner_cx, prect.top + 138))
+        if self.new_best:
+            self._draw_new_best_sparkles(best_rect)
 
         if self.state_time > 20:
             pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.09)
@@ -348,6 +350,29 @@ class Game:
             prompt.set_alpha(int(120 + 135 * pulse))
             rect = prompt.get_rect(center=(inner_cx, prect.bottom - 26))
             self.screen.blit(prompt, rect)
+
+    def _draw_new_best_sparkles(self, around: pygame.Rect) -> None:
+        """Draw twinkling 4-point sparkles flanking the 'New Best!' label."""
+        spots = [
+            (around.left - 16, around.centery - 6),
+            (around.right + 16, around.centery + 4),
+            (around.left - 2, around.top - 8),
+            (around.right + 2, around.bottom + 4),
+        ]
+        for i, (sx, sy) in enumerate(spots):
+            tw = 0.5 + 0.5 * math.sin(self.state_time * 0.16 + i * 1.6)
+            size = 4 + 4 * tw
+            alpha = int(120 + 135 * tw)
+            color = (*config.TEXT_ACCENT, alpha)
+            spark = pygame.Surface((int(size * 2 + 2), int(size * 2 + 2)), pygame.SRCALPHA)
+            c = spark.get_width() / 2
+            pygame.draw.line(spark, color, (c, c - size), (c, c + size), 2)
+            pygame.draw.line(spark, color, (c - size, c), (c + size, c), 2)
+            pygame.draw.line(spark, color, (c - size * 0.5, c - size * 0.5),
+                             (c + size * 0.5, c + size * 0.5), 1)
+            pygame.draw.line(spark, color, (c - size * 0.5, c + size * 0.5),
+                             (c + size * 0.5, c - size * 0.5), 1)
+            self.screen.blit(spark, spark.get_rect(center=(sx, sy)))
 
     def _draw_flash(self) -> None:
         """White impact flash overlay."""

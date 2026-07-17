@@ -152,6 +152,8 @@ KELP_COLOR_LIGHT: tuple[int, int, int] = (44, 128, 118)
 
 WHALE_BODY: tuple[int, int, int] = (74, 130, 196)       # friendly blue
 WHALE_BODY_LIGHT: tuple[int, int, int] = (108, 168, 226)
+WHALE_OUTLINE: tuple[int, int, int] = (38, 78, 128)     # soft darker edge
+WHALE_GLOW: tuple[int, int, int] = (150, 214, 246)      # gentle halo
 WHALE_BELLY: tuple[int, int, int] = (232, 244, 252)
 WHALE_CHEEK: tuple[int, int, int] = (246, 168, 176)
 WHALE_EYE: tuple[int, int, int] = (34, 44, 58)
