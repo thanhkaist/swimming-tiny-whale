@@ -158,9 +158,9 @@ class ParticleSystem:
             radius = self._rng.uniform(2, 5)
             self.splashes.append(Splash(x, y, vx, vy, radius))
 
-    def emit_score_pop(self, x: float, y: float) -> None:
-        """Emit a rising '+1' at ``(x, y)``."""
-        self.score_pops.append(ScorePop(x, y))
+    def emit_score_pop(self, x: float, y: float, text: str = "+1") -> None:
+        """Emit a rising ``text`` (defaults to '+1') at ``(x, y)``."""
+        self.score_pops.append(ScorePop(x, y, text))
 
     # ------------------------------------------------------------------ #
     # Update / draw

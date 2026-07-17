@@ -90,6 +90,27 @@ def build_vignette(width: int, height: int, strength: int) -> pygame.Surface:
     return pygame.transform.smoothscale(small, (width, height))
 
 
+_coin_cache: dict[int, pygame.Surface] = {}
+
+
+def build_coin(radius: int) -> pygame.Surface:
+    """Build (and cache) a shiny gold coin sprite of the given radius."""
+    cached = _coin_cache.get(radius)
+    if cached is not None:
+        return cached
+    size = radius * 2 + 4
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    c = size // 2
+    pygame.draw.circle(surf, config.COIN_COLOR_DARK, (c, c), radius)
+    pygame.draw.circle(surf, config.COIN_COLOR, (c, c), radius - 2)
+    # Inner ring + shine for a little dimensionality.
+    pygame.draw.circle(surf, config.COIN_COLOR_DARK, (c, c), max(2, radius - 5), width=1)
+    pygame.draw.circle(surf, config.COIN_SHINE, (c - radius // 3, c - radius // 3),
+                       max(1, radius // 3))
+    _coin_cache[radius] = surf
+    return surf
+
+
 def radial_glow(
     radius: int,
     color: tuple[int, int, int],

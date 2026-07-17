@@ -18,6 +18,7 @@ import config
 import modes
 import storage
 from audio import Audio
+from collectibles import CollectibleField
 from obstacles import ObstacleField
 from particles import ParticleSystem
 from scene import Scene
@@ -40,6 +41,7 @@ class Game:
         self.scene = Scene()
         self.whale = Whale()
         self.field = ObstacleField(self.rng)
+        self.collectibles = CollectibleField(self.rng)
         self.particles = ParticleSystem(self.rng)
 
         self.fonts = self._load_fonts()
@@ -56,6 +58,7 @@ class Game:
         self.run_mode = modes.by_id(self.profile["selected_mode"])
         self.highscore = self._mode_best(self.run_mode.id)
         self.menu_index = 0           # shared cursor for menu screens
+        self.run_coins = 0            # coins collected in the current run
 
         # Leaderboard + arcade-style name entry.
         self.leaderboard = storage.load_leaderboard()
@@ -122,19 +125,37 @@ class Game:
         self.run_mode = modes.by_id(self.profile["selected_mode"])
         self.highscore = self._mode_best(self.run_mode.id)
 
+        # Bank any coins from a prior run that never got persisted.
+        self._bank_run_coins()
+
         # Daily mode is fully deterministic: seed a fresh RNG from today's date
-        # so every player gets the same run. Other modes vary each attempt.
+        # so every player gets the same run (coins use a separate stream off the
+        # same seed). Other modes vary each attempt.
         if self.run_mode.is_daily:
-            run_rng = random.Random(modes.today_seed())
+            base = modes.today_seed()
+            run_rng = random.Random(base)
+            coin_rng = random.Random(base + 1)
         else:
             run_rng = random.Random()
+            coin_rng = random.Random()
         self.field = ObstacleField(run_rng, mode=self.run_mode)
+        self.collectibles = CollectibleField(coin_rng, mode=self.run_mode)
 
         self.whale.reset()
         self.particles.clear()
         self.score = 0
+        self.run_coins = 0
+        self.coins = self.profile["coins"]
         self.new_best = False
         self._started = False
+
+    def _bank_run_coins(self) -> None:
+        """Persist coins collected this run into the profile balance."""
+        if self.run_coins > 0:
+            storage.add_coins(self.run_coins)
+            self.profile = storage.load_profile()
+            self.coins = self.profile["coins"]
+            self.run_coins = 0
 
     # ------------------------------------------------------------------ #
     # Input
@@ -158,11 +179,16 @@ class Game:
         """Process the input/event queue."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.running = False
+                self._request_quit()
             elif event.type == pygame.KEYDOWN:
                 self._on_keydown(event)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._on_click()
+
+    def _request_quit(self) -> None:
+        """Bank any unsaved coins, then ask the loop to stop."""
+        self._bank_run_coins()
+        self.running = False
 
     # Menu-style screens (list selection) share one input handler.
     _MENU_STATES = (config.STATE_MODESELECT, config.STATE_CHARSELECT, config.STATE_SHOP)
@@ -196,7 +222,7 @@ class Game:
             self._open_menu(config.STATE_MODESELECT)
             return
         if event.key == pygame.K_ESCAPE:
-            self.running = False
+            self._request_quit()
             return
         if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
             self._swim()
@@ -354,6 +380,9 @@ class Game:
             self.particles.update(dt)
             return
 
+        # One scroll speed shared by every field so parallax stays consistent.
+        speed = ObstacleField.speed_for_score(self.score, self.run_mode)
+
         self.whale.update(dt)
         gained = self.field.update(self.score, self.whale.x, dt)
         if gained:
@@ -361,6 +390,14 @@ class Game:
             self.score_pop = 1.0
             self.audio.play("score")
             self.particles.emit_score_pop(self.whale.x, self.whale.y - self.whale.height)
+
+        coins, _powerups = self.collectibles.update(speed, self.whale, self.field, dt)
+        if coins:
+            self.run_coins += coins
+            self.coins += coins
+            self.audio.play("score")
+            self.particles.emit_score_pop(self.whale.x + 20, self.whale.y - self.whale.height, "+%d" % coins)
+
         self.particles.update(dt)
 
         if self.field.collides(self.whale.rect) or self.whale.hits_bounds():
@@ -403,6 +440,9 @@ class Game:
         self.particles.emit_splash(self.whale.x, self.whale.y)
         self.whale.alive = False
 
+        # Persist coins earned this run.
+        self._bank_run_coins()
+
         # Record the best score for this mode. Normal keeps the legacy
         # high-score file; other modes record into the profile.
         if self.run_mode.id == config.DEFAULT_MODE:
@@ -441,6 +481,7 @@ class Game:
         offset = self._shake_offset()
         self.scene.draw(self.screen, offset)
         self.field.draw(self.screen, offset)
+        self.collectibles.draw(self.screen, offset)
 
         # The whale hides during the fully-black part of a title→play fade-in.
         self.whale.draw(self.screen, offset)
@@ -501,6 +542,8 @@ class Game:
         self.screen.blit(shadow, shadow.get_rect(center=(cx + 2, cy + 2)))
         self.screen.blit(base, base.get_rect(center=(cx, cy)))
 
+        self._draw_coin_counter()
+
         # Before the first flap, gently prompt the player to start.
         if self.state == config.STATE_PLAYING and not self._started:
             pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.12)
@@ -508,6 +551,17 @@ class Game:
             hint.set_alpha(int(120 + 135 * pulse))
             rect = hint.get_rect(center=(cx, config.SCREEN_HEIGHT // 2 + 70))
             self.screen.blit(hint, rect)
+
+    def _draw_coin_counter(self, top: int = 22) -> None:
+        """Draw a coin icon + live balance in the top-right corner."""
+        from assets import draw as art
+
+        coin = art.build_coin(config.COIN_RADIUS)
+        label = self.fonts["medium"].render(str(self.coins), True, config.COIN_COLOR)
+        right = config.SCREEN_WIDTH - 16
+        self.screen.blit(label, label.get_rect(midright=(right, top)))
+        self.screen.blit(coin, coin.get_rect(
+            midright=(right - label.get_width() - 8, top)))
 
     def _draw_title(self) -> None:
         """Draw the title screen text with a gentle floating motion."""

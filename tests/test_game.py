@@ -271,3 +271,43 @@ def test_mode_best_recorded_on_death(temp_storage) -> None:  # noqa: ANN001
     game.update(dt=1.0)
     assert game.state == config.STATE_GAMEOVER
     assert storage.load_profile()["per_mode_highscores"]["hard"] == 9
+
+
+# --------------------------------------------------------------------------- #
+# Coins
+# --------------------------------------------------------------------------- #
+def test_collected_coins_bank_on_death(temp_storage) -> None:  # noqa: ANN001
+    import storage
+    from collectibles import Coin
+
+    game = Game()
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    # Drop a coin right on the whale so it is collected next tick.
+    game.collectibles.items = [Coin(game.whale.x, game.whale.y)]
+    game.update(dt=1.0)
+    assert game.run_coins >= config.COIN_VALUE
+    # Now die and confirm the coins are persisted to the profile.
+    game.whale.y = config.SEABED_Y + 50
+    game.update(dt=1.0)
+    assert game.state == config.STATE_GAMEOVER
+    assert storage.load_profile()["coins"] >= config.COIN_VALUE
+
+
+def test_coins_bank_on_quit_in_zen(temp_storage) -> None:  # noqa: ANN001
+    import storage
+    from collectibles import Coin
+
+    game = Game()
+    game.profile["selected_mode"] = "zen"
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.collectibles.items = [Coin(game.whale.x, game.whale.y)]
+    game.update(dt=1.0)
+    banked = game.run_coins
+    assert banked >= config.COIN_VALUE
+    game._request_quit()  # Zen never dies; quitting must still bank coins
+    assert not game.running
+    assert storage.load_profile()["coins"] >= banked

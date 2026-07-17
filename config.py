@@ -113,6 +113,23 @@ SCORE_POP_LIFETIME: int = 42        # Frames the "+1" pop lingers.
 SCORE_POP_RISE: float = 1.1
 
 # --------------------------------------------------------------------------- #
+# Collectibles (coins) — scroll with the field and are grabbed mid-run
+# --------------------------------------------------------------------------- #
+COIN_RADIUS: int = 11
+COIN_VALUE: int = 1                  # Coins added to the balance per pickup.
+COIN_SPAWN_INTERVAL: float = 78.0    # Frames between coin-cluster spawns.
+COIN_SPAWN_JITTER: float = 0.45      # ± fraction randomising the interval.
+COIN_CLUSTER_MAX: int = 3            # Up to this many coins per cluster.
+COIN_CLUSTER_SPACING: int = 30       # Horizontal gap within a cluster.
+COIN_GAP_JITTER: float = 22.0        # Vertical spread around the aimed gap.
+COIN_BOB_SPEED: float = 0.12         # Idle vertical bob of a coin.
+COIN_BOB_AMPLITUDE: float = 2.5
+COIN_MAGNET_LERP: float = 0.16       # Per-frame pull toward the whale (magnet).
+COIN_COLOR: tuple[int, int, int] = (255, 205, 74)      # gold
+COIN_COLOR_DARK: tuple[int, int, int] = (214, 152, 34)  # rim
+COIN_SHINE: tuple[int, int, int] = (255, 244, 200)      # highlight
+
+# --------------------------------------------------------------------------- #
 # Scene / background
 # --------------------------------------------------------------------------- #
 GODRAY_COUNT: int = 5
