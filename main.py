@@ -1044,8 +1044,71 @@ class Game:
                 break
 
 
+def _arg_after(flag: str, default: str | None = None) -> str | None:
+    """Return the CLI argument following ``flag`` (or ``default``)."""
+    if flag in sys.argv:
+        try:
+            return sys.argv[sys.argv.index(flag) + 1]
+        except IndexError:
+            return default
+    return default
+
+
+def shot(state: str, path: str, frames: int = 60) -> None:
+    """Render ``state`` for ``frames`` and save a PNG (headless screenshot tool).
+
+    Seeds a representative scene for gameplay states (a run in progress with a
+    coin, a power-up, and a hazard) so screenshots show the features off.
+    """
+    game = Game()
+    if state == config.STATE_PLAYING:
+        import powerups
+        from collectibles import Coin, PowerUp
+        from hazards import Jellyfish
+        game.start_run()
+        game.state = config.STATE_PLAYING
+        game._started = True
+        game.coins = 128
+        game.score = 6
+        game.effects.activate(powerups.MAGNET)
+        # Advance the world while steering the whale through the gaps so the
+        # scene fills with columns (never dies), then stage props around it.
+        for _ in range(frames):
+            ahead = [o for o in game.field.obstacles if o.center_x >= game.whale.x - 20]
+            if ahead:
+                game.whale.y = ahead[0].gap_center
+                game.whale.vy = -2
+            game.scene.update(1.0)
+            game.field.update(game.score, game.whale.x + 9999, 1.0)
+            game.particles.update(1.0)
+        wy = game.whale.y
+        game.collectibles.items = [Coin(game.whale.x + 150, wy - 10),
+                                   PowerUp(game.whale.x + 250, wy + 40, powerups.SHIELD)]
+        game.hazards.hazards = [Jellyfish(game.whale.x + 210, wy - 90, game.rng)]
+    elif state in game._MENU_STATES:
+        game._open_menu(state)
+        for _ in range(frames):
+            game.update(1.0)
+    else:
+        game.state = state
+        for _ in range(frames):
+            game.update(1.0)
+    game.draw()
+    pygame.image.save(game.screen, path)
+
+
 def main() -> None:
     """Program entry point."""
+    # Headless screenshot: `python main.py --shot <state> <path> [--frames N]`.
+    if "--shot" in sys.argv:
+        state = _arg_after("--shot", config.STATE_TITLE) or config.STATE_TITLE
+        idx = sys.argv.index("--shot")
+        path = sys.argv[idx + 2] if len(sys.argv) > idx + 2 else "shot.png"
+        frames = int(_arg_after("--frames", "60") or "60")
+        shot(state, path, frames)
+        pygame.quit()
+        return
+
     game = Game()
     # Allow a bounded, self-exiting smoke run: `... python main.py --frames 120`.
     max_frames: int | None = None

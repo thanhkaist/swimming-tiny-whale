@@ -72,6 +72,43 @@ A local top-10 leaderboard with classic arcade initials entry.
   activation, typing/backspace/cap/submit, no-restart-while-typing, open/leave
   from title and game-over).
 
+## Big update — modes, characters, coins/shop, power-ups, hazards (branch `feature/big-update`)
+
+A large gameplay expansion layered on in dependency-ordered, independently-tested
+milestones (one commit each). 151 tests pass; headless smoke + screenshots green.
+
+- **Profile persistence** (`profile.json`): coins, unlocks, selected
+  character/mode/trail, per-mode bests — same graceful-degrade JSON pattern as
+  the existing high score, with a monkeypatchable path for tests. Non-Normal
+  modes get their own `leaderboard_<mode>.json`; Normal keeps `leaderboard.json`.
+- **Game modes** (`modes.py`): Zen (no death — clamp instead), Normal, Hard
+  (tighter/faster), Daily (deterministic run from the date seed). `gap_for_score`
+  / `speed_for_score` stayed single-arg-static compatible via an optional `mode`.
+- **Coins & collectibles** (`collectibles.py`): coins spawn in clusters aimed at
+  the newest gap, scroll at the *shared* field speed, bank to the profile on
+  death and on quit (so Zen still saves). HUD counter.
+- **Characters** (`characters.py`): Classic/Coral/Orca/Pip — distinct procedural
+  skins *and* feel (gravity/impulse/hitbox scales). Default spec is numerically
+  neutral, so the original whale + all physics tests are unchanged.
+- **Shop + trails** (`ui.py`, `trails.py`): spend coins to unlock whales and
+  cosmetic trails; `ui.py` extracts the shared panel/menu drawing to keep the
+  loop thin.
+- **Power-ups** (`powerups.py`): Shield/Slow-mo/Magnet/Shrink. Effect timers
+  count in **real** frames while the world runs on `dt * time_scale`, so slow-mo
+  can't stretch itself. One `_resolve_collision` sink handles Zen-clamp /
+  shield-absorb (i-frames + bounce) / death across coral, bounds, and hazards.
+- **Hazards** (`hazards.py`) + moving columns: vertically oscillating gaps
+  (amplitude capped by band headroom), jellyfish, spiky mines (shield-absorbable),
+  and current zones that push the whale. All deterministic from injected RNGs.
+- **Screenshot tool**: `python main.py --shot <state> <path> [--frames N]` renders
+  any screen headlessly (used to regenerate `docs/`).
+
+**Key correctness guards kept green:** default `WhaleSpec` leaves physics
+identical; static `Obstacle` unchanged; `gap_for_score`/`speed_for_score` static
+single-arg calls resolve to Normal; existing high-score/leaderboard files
+untouched; every new spawner is deterministic from an injected RNG so Daily runs
+reproduce and seeded tests pass.
+
 ## What I'd polish next
 
 - **Real audio playtest.** SFX are synthesised and wired, but this was a
