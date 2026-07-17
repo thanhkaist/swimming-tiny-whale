@@ -130,6 +130,24 @@ COIN_COLOR_DARK: tuple[int, int, int] = (214, 152, 34)  # rim
 COIN_SHINE: tuple[int, int, int] = (255, 244, 200)      # highlight
 
 # --------------------------------------------------------------------------- #
+# Power-ups (timed pickups) — durations are in frames @ REFERENCE_FPS
+# --------------------------------------------------------------------------- #
+POWERUP_RADIUS: int = 15
+POWERUP_SPAWN_CHANCE: float = 0.24   # Chance a spawn is a power-up not coins.
+SHIELD_DURATION: float = 720.0       # 12s, or until a hit is absorbed.
+SHIELD_IFRAMES: float = 45.0         # Invulnerability frames after a shield pop.
+SLOWMO_DURATION: float = 300.0       # 5s
+SLOWMO_TIME_SCALE: float = 0.5       # World runs at half speed while active.
+MAGNET_DURATION: float = 420.0       # 7s
+SHRINK_DURATION: float = 360.0       # 6s
+SHRINK_HITBOX_SCALE: float = 0.55    # Whale hitbox multiplier while shrunk.
+
+POWERUP_SHIELD_COLOR: tuple[int, int, int] = (110, 196, 255)
+POWERUP_SLOWMO_COLOR: tuple[int, int, int] = (196, 150, 255)
+POWERUP_MAGNET_COLOR: tuple[int, int, int] = (255, 176, 84)
+POWERUP_SHRINK_COLOR: tuple[int, int, int] = (140, 236, 168)
+
+# --------------------------------------------------------------------------- #
 # Scene / background
 # --------------------------------------------------------------------------- #
 GODRAY_COUNT: int = 5

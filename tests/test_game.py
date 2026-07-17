@@ -327,6 +327,37 @@ def test_cannot_select_locked_character(temp_storage) -> None:  # noqa: ANN001
     assert game.profile["selected_character"] == "classic"
 
 
+def test_shield_absorbs_one_hit(temp_storage) -> None:  # noqa: ANN001
+    import powerups
+
+    game = Game()
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.effects.activate(powerups.SHIELD)
+    game.whale.y = config.SEABED_Y + 50   # would normally be fatal
+    game.update(dt=1.0)
+    # Shield absorbed it: still playing, shield spent, invulnerable briefly.
+    assert game.state == config.STATE_PLAYING
+    assert not game.effects.shield
+    assert game._iframes > 0
+
+
+def test_shrink_powerup_reduces_hitbox_during_play(temp_storage) -> None:  # noqa: ANN001
+    import powerups
+
+    game = Game()
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.whale.y = 300
+    game.update(dt=1.0)
+    full = game.whale.rect.width
+    game.effects.activate(powerups.SHRINK)
+    game.update(dt=1.0)
+    assert game.whale.rect.width < full
+
+
 def test_coins_bank_on_quit_in_zen(temp_storage) -> None:  # noqa: ANN001
     import storage
     from collectibles import Coin

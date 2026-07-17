@@ -19,6 +19,7 @@ import pygame
 
 import config
 import modes
+import powerups
 from util import clamp, lerp
 
 
@@ -69,8 +70,16 @@ class Coin(Collectible):
         self._bob_phase = rng.uniform(0.0, math.tau) if rng else 0.0
 
 
+class PowerUp(Collectible):
+    """A floating power-up; ``kind`` is one of ``powerups.IDS``."""
+
+    def __init__(self, x: float, y: float, kind: str) -> None:
+        super().__init__(x, y, config.POWERUP_RADIUS)
+        self.kind = kind
+
+
 class CollectibleField:
-    """Spawns, scrolls, and collects coins (and, later, power-ups)."""
+    """Spawns, scrolls, and collects coins and power-ups."""
 
     def __init__(
         self, rng: random.Random | None = None, mode: "modes.Mode | None" = None
@@ -144,8 +153,13 @@ class CollectibleField:
         return self._rng.uniform(lo, hi)
 
     def _spawn_cluster(self, obstacle_field: "object | None") -> None:
-        """Spawn a short horizontal run of coins entering from the right."""
+        """Spawn either a power-up or a short run of coins, entering right."""
         y = self._spawn_y(obstacle_field)
+        if self._rng.random() < config.POWERUP_SPAWN_CHANCE:
+            kind = self._rng.choice(powerups.IDS)
+            x = config.SCREEN_WIDTH + config.POWERUP_RADIUS * 2
+            self.items.append(PowerUp(x, y, kind))
+            return
         count = self._rng.randint(1, config.COIN_CLUSTER_MAX)
         x0 = config.SCREEN_WIDTH + config.COIN_RADIUS * 2
         for k in range(count):
@@ -159,11 +173,16 @@ class CollectibleField:
         from assets import draw as art  # rendering-only dependency
 
         for item in self.items:
-            if item.collected or item.kind != "coin":
+            if item.collected:
                 continue
-            sprite = art.build_coin(item.radius)
             cx = item.x + offset[0]
             cy = item.draw_y + offset[1]
-            glow = art.radial_glow(item.radius + 6, config.COIN_SHINE, 60)
+            if item.kind == "coin":
+                glow = art.radial_glow(item.radius + 6, config.COIN_SHINE, 60)
+                sprite = art.build_coin(item.radius)
+            else:
+                kind = powerups.by_id(item.kind)
+                glow = art.radial_glow(item.radius + 8, kind.color, 90)
+                sprite = art.build_powerup(item.kind, kind.color, item.radius)
             target.blit(glow, glow.get_rect(center=(cx, cy)))
             target.blit(sprite, sprite.get_rect(center=(cx, cy)))

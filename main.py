@@ -17,6 +17,7 @@ import pygame
 import characters
 import config
 import modes
+import powerups
 import storage
 import trails
 import ui
@@ -45,6 +46,8 @@ class Game:
         self.field = ObstacleField(self.rng)
         self.collectibles = CollectibleField(self.rng)
         self.particles = ParticleSystem(self.rng)
+        self.effects = powerups.EffectManager()
+        self._iframes = 0.0           # invulnerability frames after a shield pop
 
         self.fonts = self._load_fonts()
 
@@ -153,6 +156,8 @@ class Game:
         # Rebuild the whale so the run always matches the selected character.
         self.whale = Whale(spec=characters.by_id(self.profile["selected_character"]))
         self.particles.clear()
+        self.effects.clear()
+        self._iframes = 0.0
         self.score = 0
         self.run_coins = 0
         self.coins = self.profile["coins"]
@@ -464,28 +469,42 @@ class Game:
             self.particles.update(dt)
             return
 
+        # Timed effects count down in REAL frames; the world runs on a scaled
+        # dt so slow-mo lasts a fixed wall-clock time and doesn't stretch itself.
+        self.effects.update(dt)
+        self._iframes = max(0.0, self._iframes - dt)
+        gameplay_dt = dt * self.effects.time_scale
+
+        # Shrink (and the character's own hitbox scale) shrink the collision box.
+        self.whale.hitbox_scale = self.whale.spec.hitbox_scale * self.effects.hitbox_scale
+
         # One scroll speed shared by every field so parallax stays consistent.
         speed = ObstacleField.speed_for_score(self.score, self.run_mode)
 
-        self.whale.update(dt)
-        gained = self.field.update(self.score, self.whale.x, dt)
+        self.whale.update(gameplay_dt)
+        gained = self.field.update(self.score, self.whale.x, gameplay_dt)
         if gained:
             self.score += gained
             self.score_pop = 1.0
             self.audio.play("score")
             self.particles.emit_score_pop(self.whale.x, self.whale.y - self.whale.height)
 
-        self._emit_trail(dt)
-        coins, _powerups = self.collectibles.update(speed, self.whale, self.field, dt)
+        self._emit_trail(gameplay_dt)
+        coins, got_powerups = self.collectibles.update(
+            speed, self.whale, self.field, gameplay_dt, effects=self.effects)
         if coins:
             self.run_coins += coins
             self.coins += coins
             self.audio.play("score")
             self.particles.emit_score_pop(self.whale.x + 20, self.whale.y - self.whale.height, "+%d" % coins)
+        for kind in got_powerups:
+            self.effects.activate(kind)
+            self.audio.play("score")
+            self.flash = config.LOCKED_FLASH_ALPHA
 
-        self.particles.update(dt)
+        self.particles.update(gameplay_dt)
 
-        if self.field.collides(self.whale.rect) or self.whale.hits_bounds():
+        if self._iframes <= 0 and (self.field.collides(self.whale.rect) or self.whale.hits_bounds()):
             self._resolve_collision()
 
     def _emit_trail(self, dt: float) -> None:
@@ -502,15 +521,24 @@ class Game:
                 self.whale.x - self.whale.width * 0.42, self.whale.y + 4, color)
 
     def _resolve_collision(self) -> None:
-        """Decide what a collision means for the active mode.
+        """Decide what a collision means: Zen clamps, a shield absorbs, else die.
 
-        Zen mode never ends the run — the whale is simply kept inside the
-        surface/seabed band and swims through coral. Other modes die.
+        This is the single collision sink for coral, bounds, and hazards, so the
+        three outcomes never diverge across subsystems.
         """
         if self.run_mode.no_death:
             self._clamp_whale_to_bounds()
-        else:
-            self._on_death()
+            return
+        if self.effects.consume_shield():
+            # Absorb the hit: brief invulnerability + a bounce back into play.
+            self._iframes = config.SHIELD_IFRAMES
+            self.whale.vy = config.SWIM_IMPULSE * 0.8
+            self.shake = config.SHAKE_ON_HIT * 0.5
+            self.flash = config.LOCKED_FLASH_ALPHA
+            self.particles.emit_splash(self.whale.x, self.whale.y)
+            self.audio.play("hit")
+            return
+        self._on_death()
 
     def _clamp_whale_to_bounds(self) -> None:
         """Keep the whale within the playable band (used by Zen mode)."""
@@ -645,6 +673,7 @@ class Game:
         self.screen.blit(base, base.get_rect(center=(cx, cy)))
 
         self._draw_coin_counter()
+        self._draw_effect_hud()
 
         # Before the first flap, gently prompt the player to start.
         if self.state == config.STATE_PLAYING and not self._started:
@@ -653,6 +682,24 @@ class Game:
             hint.set_alpha(int(120 + 135 * pulse))
             rect = hint.get_rect(center=(cx, config.SCREEN_HEIGHT // 2 + 70))
             self.screen.blit(hint, rect)
+
+    def _draw_effect_hud(self) -> None:
+        """Draw active power-up icons with depleting time bars (top-left)."""
+        from assets import draw as art
+
+        items = self.effects.hud_items()
+        x = 16
+        y = 20
+        for kind, color, frac in items:
+            icon = art.build_powerup(kind, color, 13)
+            self.screen.blit(icon, icon.get_rect(midleft=(x, y)))
+            # Depleting bar under the icon.
+            bar_w = 30
+            bx = x + 2
+            by = y + 18
+            pygame.draw.rect(self.screen, (10, 30, 44), (bx, by, bar_w, 5), border_radius=2)
+            pygame.draw.rect(self.screen, color, (bx, by, int(bar_w * frac), 5), border_radius=2)
+            x += 44
 
     def _draw_coin_counter(self, top: int = 22) -> None:
         """Draw a coin icon + live balance in the top-right corner."""

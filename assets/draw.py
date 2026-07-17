@@ -111,6 +111,46 @@ def build_coin(radius: int) -> pygame.Surface:
     return surf
 
 
+_powerup_cache: dict[str, pygame.Surface] = {}
+
+
+def build_powerup(kind: str, color: tuple[int, int, int], radius: int) -> pygame.Surface:
+    """Build (and cache) a glossy power-up disc with a distinct white glyph."""
+    cached = _powerup_cache.get(kind)
+    if cached is not None:
+        return cached
+    size = radius * 2 + 6
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    c = size // 2
+    dark = lerp_color(color, (10, 20, 40), 0.35)
+    pygame.draw.circle(surf, dark, (c, c), radius)
+    pygame.draw.circle(surf, color, (c, c), radius - 2)
+    pygame.draw.circle(surf, lerp_color(color, (255, 255, 255), 0.5),
+                       (c - radius // 3, c - radius // 3), max(1, radius // 3))
+    white = (255, 255, 255)
+    r = radius
+    if kind == "shield":                       # plus / cross
+        pygame.draw.line(surf, white, (c, c - r * 0.5), (c, c + r * 0.5), 3)
+        pygame.draw.line(surf, white, (c - r * 0.5, c), (c + r * 0.5, c), 3)
+    elif kind == "slowmo":                      # clock
+        pygame.draw.circle(surf, white, (c, c), int(r * 0.5), 2)
+        pygame.draw.line(surf, white, (c, c), (c, c - int(r * 0.4)), 2)
+        pygame.draw.line(surf, white, (c, c), (c + int(r * 0.3), c), 2)
+    elif kind == "magnet":                      # horseshoe (U)
+        rect = pygame.Rect(0, 0, int(r * 1.0), int(r * 1.1))
+        rect.center = (c, c - 1)
+        pygame.draw.arc(surf, white, rect, 3.14159, 2 * 3.14159, 3)
+        pygame.draw.line(surf, white, (rect.left, c - 1), (rect.left, rect.bottom), 3)
+        pygame.draw.line(surf, white, (rect.right, c - 1), (rect.right, rect.bottom), 3)
+    elif kind == "shrink":                      # inward arrows > <
+        pygame.draw.line(surf, white, (c - r * 0.55, c - r * 0.35), (c - r * 0.1, c), 3)
+        pygame.draw.line(surf, white, (c - r * 0.55, c + r * 0.35), (c - r * 0.1, c), 3)
+        pygame.draw.line(surf, white, (c + r * 0.55, c - r * 0.35), (c + r * 0.1, c), 3)
+        pygame.draw.line(surf, white, (c + r * 0.55, c + r * 0.35), (c + r * 0.1, c), 3)
+    _powerup_cache[kind] = surf
+    return surf
+
+
 def radial_glow(
     radius: int,
     color: tuple[int, int, int],
