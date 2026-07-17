@@ -12,6 +12,8 @@ venv/
 # Game runtime state
 highscore.json
 leaderboard.json
+leaderboard_*.json
+profile.json
 
 # OS / editor
 .DS_Store

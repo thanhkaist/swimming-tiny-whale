@@ -192,9 +192,17 @@ FONT_SIZE_SMALL: int = 20
 # --------------------------------------------------------------------------- #
 HIGHSCORE_FILE: str = "highscore.json"
 LEADERBOARD_FILE: str = "leaderboard.json"
+# Per-mode leaderboards for non-Normal modes: leaderboard_<mode>.json.
+LEADERBOARD_FILE_TEMPLATE: str = "leaderboard_{mode}.json"
 LEADERBOARD_SIZE: int = 10          # How many top scores to keep.
 INITIALS_LENGTH: int = 3            # Arcade-style 3-letter name entry.
 DEFAULT_INITIALS: str = "AAA"       # Pre-filled entry / fallback name.
+
+# Player profile: coins, unlocks, selections, and per-mode bests.
+PROFILE_FILE: str = "profile.json"
+DEFAULT_CHARACTER: str = "classic"  # Whale unlocked from the start.
+DEFAULT_MODE: str = "normal"        # Mode selected on a fresh profile.
+DEFAULT_TRAIL: str = "none"         # Cosmetic trail selected on a fresh profile.
 
 # --------------------------------------------------------------------------- #
 # Game states
@@ -203,3 +211,6 @@ STATE_TITLE: str = "title"
 STATE_PLAYING: str = "playing"
 STATE_GAMEOVER: str = "gameover"
 STATE_LEADERBOARD: str = "leaderboard"
+STATE_MODESELECT: str = "modeselect"
+STATE_CHARSELECT: str = "charselect"
+STATE_SHOP: str = "shop"

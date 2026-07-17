@@ -48,6 +48,10 @@ class Game:
         self.highscore = storage.load_highscore()
         self.new_best = False
 
+        # Player profile: coins, unlocks, selected character/mode/trail.
+        self.profile = storage.load_profile()
+        self.coins = self.profile["coins"]
+
         # Leaderboard + arcade-style name entry.
         self.leaderboard = storage.load_leaderboard()
         self.name_entry_active = False       # typing initials on the panel?

@@ -36,6 +36,9 @@ def temp_storage(tmp_path, monkeypatch):  # noqa: ANN001 - pytest fixtures
     monkeypatch.setattr(storage, "_default_path", lambda: str(tmp_path / "hs.json"))
     monkeypatch.setattr(storage, "_default_leaderboard_path",
                         lambda: str(tmp_path / "lb.json"))
+    monkeypatch.setattr(storage, "_default_profile_path",
+                        lambda: str(tmp_path / "profile.json"))
+    monkeypatch.setattr(storage, "_here", lambda: str(tmp_path))
     return tmp_path
 
 
