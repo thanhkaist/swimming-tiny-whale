@@ -25,15 +25,29 @@ class Audio:
         self.available: bool = False
         self.enabled: bool = True
         self._sounds: dict[str, pygame.mixer.Sound] = {}
+        self._rate: int = _SAMPLE_RATE
+        self._channels: int = 1
         self._init_mixer()
         if self.available:
             self._build_sounds()
 
     def _init_mixer(self) -> None:
-        """Try to bring up the mixer; on any failure, stay silent."""
+        """Bring up the mixer; synthesise to whatever format it actually uses.
+
+        ``pygame.init()`` may already have opened the mixer (often in stereo),
+        in which case our requested format would be ignored and mono buffers
+        would play back garbled. We read the *actual* init format and match our
+        synthesis to it, so playback is correct regardless of how it was opened.
+        """
         try:
-            pygame.mixer.pre_init(_SAMPLE_RATE, -16, 1, 512)
-            pygame.mixer.init()
+            if not pygame.mixer.get_init():
+                pygame.mixer.pre_init(_SAMPLE_RATE, -16, 1, 512)
+                pygame.mixer.init()
+            actual = pygame.mixer.get_init()
+            if not actual:
+                self.available = False
+                return
+            self._rate, _size, self._channels = actual
             self.available = True
         except pygame.error:
             self.available = False
@@ -48,22 +62,28 @@ class Audio:
         duration: float,
         wave: str = "sine",
     ) -> "pygame.mixer.Sound":
-        """Synthesise a mono 16-bit tone that glides from start→end frequency."""
-        n = int(_SAMPLE_RATE * duration)
+        """Synthesise a 16-bit tone gliding start→end freq, matching mixer format.
+
+        Emits ``self._channels`` interleaved samples per step at ``self._rate``
+        so the buffer is correct whether the mixer opened mono or stereo.
+        """
+        n = int(self._rate * duration)
         buf = array.array("h", bytes(0))
         buf_append = buf.append
         phase = 0.0
         for i in range(n):
             t = i / n
             freq = freq_start + (freq_end - freq_start) * t
-            phase += freq / _SAMPLE_RATE
+            phase += freq / self._rate
             if wave == "square":
                 sample = 1.0 if (phase % 1.0) < 0.5 else -1.0
             else:  # sine
                 sample = math.sin(phase * math.tau)
             # Short attack + exponential release envelope for a soft blip.
             env = min(1.0, t * 12.0) * (1.0 - t) ** 1.4
-            buf_append(int(_AMPLITUDE * env * sample * 32767))
+            value = int(_AMPLITUDE * env * sample * 32767)
+            for _ in range(self._channels):  # interleave for stereo if needed
+                buf_append(value)
         return pygame.mixer.Sound(buffer=buf.tobytes())
 
     def _build_sounds(self) -> None:
