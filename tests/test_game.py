@@ -215,3 +215,59 @@ def test_leaderboard_returns_to_gameover(temp_storage) -> None:  # noqa: ANN001
     _press_space()
     _advance(game, 30)
     assert game.state == config.STATE_GAMEOVER
+
+
+# --------------------------------------------------------------------------- #
+# Game modes
+# --------------------------------------------------------------------------- #
+def test_open_mode_select_and_pick_hard(temp_storage) -> None:  # noqa: ANN001
+    import modes
+
+    game = Game()
+    _press_key(pygame.K_d)                 # open mode select from title
+    _advance(game, 30)
+    assert game.state == config.STATE_MODESELECT
+    # Move cursor to Hard and confirm.
+    hard_index = [m.id for m in modes.MODES].index("hard")
+    game.menu_index = hard_index
+    _press_key(pygame.K_RETURN)
+    _advance(game, 30)
+    assert game.state == config.STATE_TITLE
+    assert game.profile["selected_mode"] == "hard"
+    assert game.run_mode.id == "hard"
+
+
+def test_selected_mode_drives_live_field(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    game.profile["selected_mode"] = "hard"
+    game.start_run()
+    assert game.field.mode.id == "hard"
+
+
+def test_zen_mode_never_dies(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    game.profile["selected_mode"] = "zen"
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    # Slam the whale into the seabed repeatedly — Zen must keep playing.
+    for _ in range(10):
+        game.whale.y = config.SEABED_Y + 80
+        game.update(dt=1.0)
+    assert game.state == config.STATE_PLAYING
+    assert game.whale.rect.bottom <= config.SEABED_Y + 1
+
+
+def test_mode_best_recorded_on_death(temp_storage) -> None:  # noqa: ANN001
+    import storage
+
+    game = Game()
+    game.profile["selected_mode"] = "hard"
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.score = 9
+    game.whale.y = config.SEABED_Y + 50
+    game.update(dt=1.0)
+    assert game.state == config.STATE_GAMEOVER
+    assert storage.load_profile()["per_mode_highscores"]["hard"] == 9

@@ -78,6 +78,17 @@ OBSTACLE_EDGE_MARGIN: int = 70
 OBSTACLE_FIRST_OFFSET: int = 120
 
 # --------------------------------------------------------------------------- #
+# Game-mode difficulty multipliers (applied on top of the base curve)
+# --------------------------------------------------------------------------- #
+MODE_ZEN_GAP_SCALE: float = 1.28      # roomier gaps
+MODE_ZEN_GAP_MIN: int = 200
+MODE_ZEN_SPEED_SCALE: float = 0.82    # gentler current
+MODE_HARD_GAP_SCALE: float = 0.82     # tighter gaps
+MODE_HARD_GAP_MIN: int = 132
+MODE_HARD_SPEED_SCALE: float = 1.28   # faster current
+MODE_HARD_SPACING_SCALE: float = 0.88  # columns closer together
+
+# --------------------------------------------------------------------------- #
 # Particles
 # --------------------------------------------------------------------------- #
 BUBBLE_SPAWN_CHANCE: float = 0.18   # Per-frame chance of an ambient bubble.

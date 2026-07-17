@@ -13,6 +13,7 @@ import random
 import pygame
 
 import config
+import modes
 from util import clamp
 
 
@@ -90,9 +91,17 @@ class Obstacle:
 class ObstacleField:
     """Manages the set of live obstacles: spawning, scrolling, and scoring."""
 
-    def __init__(self, rng: random.Random | None = None) -> None:
-        """Create an empty field. Pass a seeded ``rng`` for reproducible runs."""
+    def __init__(
+        self, rng: random.Random | None = None, mode: "modes.Mode | None" = None
+    ) -> None:
+        """Create an empty field.
+
+        Pass a seeded ``rng`` for reproducible runs and a ``mode`` to apply
+        difficulty multipliers (defaults to Normal so existing callers/tests
+        behave exactly as before).
+        """
         self._rng: random.Random = rng if rng is not None else random.Random()
+        self.mode: modes.Mode = mode if mode is not None else modes.default()
         self.obstacles: list[Obstacle] = []
         self._seed_counter: int = 0
         self.reset()
@@ -108,16 +117,28 @@ class ObstacleField:
     # Difficulty
     # ------------------------------------------------------------------ #
     @staticmethod
-    def gap_for_score(score: int) -> float:
-        """Return the gap size for a given score (shrinks as score rises)."""
-        gap = config.OBSTACLE_GAP_START - score * config.OBSTACLE_GAP_SHRINK_PER_POINT
-        return clamp(gap, config.OBSTACLE_GAP_MIN, config.OBSTACLE_GAP_START)
+    def gap_for_score(score: int, mode: "modes.Mode | None" = None) -> float:
+        """Return the gap size for a given score (shrinks as score rises).
+
+        ``mode`` (default Normal) scales the gap and sets the floor, so the
+        single-arg static form used by existing tests still yields Normal.
+        """
+        m = mode if mode is not None else modes.default()
+        base = config.OBSTACLE_GAP_START - score * config.OBSTACLE_GAP_SHRINK_PER_POINT
+        gap = base * m.gap_scale
+        return clamp(gap, m.gap_min, config.OBSTACLE_GAP_START * m.gap_scale)
 
     @staticmethod
-    def speed_for_score(score: int) -> float:
+    def speed_for_score(score: int, mode: "modes.Mode | None" = None) -> float:
         """Return the scroll speed for a given score (ramps up, then caps)."""
+        m = mode if mode is not None else modes.default()
         speed = config.OBSTACLE_SPEED_START + score * config.OBSTACLE_SPEED_RAMP_PER_POINT
-        return clamp(speed, config.OBSTACLE_SPEED_START, config.OBSTACLE_SPEED_MAX)
+        speed *= m.speed_scale
+        return clamp(
+            speed,
+            config.OBSTACLE_SPEED_START * m.speed_scale,
+            config.OBSTACLE_SPEED_MAX * m.speed_scale,
+        )
 
     # ------------------------------------------------------------------ #
     # Spawning
@@ -132,11 +153,16 @@ class ObstacleField:
         return self._rng.uniform(lo, hi)
 
     def _make_obstacle(self, x: float, score: int) -> Obstacle:
-        """Construct one obstacle appropriate to the current ``score``."""
-        gap_size = self.gap_for_score(score)
+        """Construct one obstacle appropriate to the current ``score``/mode."""
+        gap_size = self.gap_for_score(score, self.mode)
         gap_center = self._random_gap_center(gap_size)
         self._seed_counter += 1
         return Obstacle(x, gap_center, gap_size, seed=self._seed_counter)
+
+    @property
+    def _spacing(self) -> float:
+        """Horizontal spacing between columns for the active mode."""
+        return config.OBSTACLE_SPACING * self.mode.spacing_scale
 
     # ------------------------------------------------------------------ #
     # Update / scoring
@@ -146,7 +172,7 @@ class ObstacleField:
 
         A point is scored when a column's centre passes the whale's x-position.
         """
-        speed = self.speed_for_score(score)
+        speed = self.speed_for_score(score, self.mode)
         gained = 0
 
         for obstacle in self.obstacles:
@@ -161,8 +187,8 @@ class ObstacleField:
         # Spawn a new column once the last one is far enough onto the screen.
         if self.obstacles:
             last = self.obstacles[-1]
-            if last.x <= config.SCREEN_WIDTH - config.OBSTACLE_SPACING:
-                new_x = last.x + config.OBSTACLE_SPACING
+            if last.x <= config.SCREEN_WIDTH - self._spacing:
+                new_x = last.x + self._spacing
                 self.obstacles.append(self._make_obstacle(new_x, score + gained))
         else:
             self.obstacles.append(

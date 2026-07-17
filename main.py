@@ -15,6 +15,7 @@ import sys
 import pygame
 
 import config
+import modes
 import storage
 from audio import Audio
 from obstacles import ObstacleField
@@ -45,12 +46,16 @@ class Game:
 
         self.state = config.STATE_TITLE
         self.score = 0
-        self.highscore = storage.load_highscore()
         self.new_best = False
 
         # Player profile: coins, unlocks, selected character/mode/trail.
         self.profile = storage.load_profile()
         self.coins = self.profile["coins"]
+
+        # Active mode for the (next) run + its current best score.
+        self.run_mode = modes.by_id(self.profile["selected_mode"])
+        self.highscore = self._mode_best(self.run_mode.id)
+        self.menu_index = 0           # shared cursor for menu screens
 
         # Leaderboard + arcade-style name entry.
         self.leaderboard = storage.load_leaderboard()
@@ -106,10 +111,26 @@ class Game:
             self.start_run()
         self._fade_target = 0
 
+    def _mode_best(self, mode_id: str) -> int:
+        """Best score for ``mode_id`` (Normal uses the legacy high-score file)."""
+        if mode_id == config.DEFAULT_MODE:
+            return storage.load_highscore()
+        return int(self.profile["per_mode_highscores"].get(mode_id, 0))
+
     def start_run(self) -> None:
-        """Reset the world for a fresh run."""
+        """Reset the world for a fresh run under the selected mode."""
+        self.run_mode = modes.by_id(self.profile["selected_mode"])
+        self.highscore = self._mode_best(self.run_mode.id)
+
+        # Daily mode is fully deterministic: seed a fresh RNG from today's date
+        # so every player gets the same run. Other modes vary each attempt.
+        if self.run_mode.is_daily:
+            run_rng = random.Random(modes.today_seed())
+        else:
+            run_rng = random.Random()
+        self.field = ObstacleField(run_rng, mode=self.run_mode)
+
         self.whale.reset()
-        self.field.reset()
         self.particles.clear()
         self.score = 0
         self.new_best = False
@@ -143,6 +164,9 @@ class Game:
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._on_click()
 
+    # Menu-style screens (list selection) share one input handler.
+    _MENU_STATES = (config.STATE_MODESELECT, config.STATE_CHARSELECT, config.STATE_SHOP)
+
     def _on_keydown(self, event: pygame.event.Event) -> None:
         """Route a key press based on the current state/sub-mode."""
         # While typing initials, keys go to the name-entry handler exclusively.
@@ -154,6 +178,11 @@ class Game:
             self.audio.toggle()
             return
 
+        # List-selection screens capture all navigation keys.
+        if self.state in self._MENU_STATES:
+            self._handle_menu_key(event)
+            return
+
         # In the leaderboard view, any key returns to where we came from.
         if self.state == config.STATE_LEADERBOARD:
             self._leave_leaderboard()
@@ -161,6 +190,10 @@ class Game:
 
         if event.key == pygame.K_l:
             self._open_leaderboard()
+            return
+        # Menu hotkeys are available from the title screen.
+        if self.state == config.STATE_TITLE and event.key == pygame.K_d:
+            self._open_menu(config.STATE_MODESELECT)
             return
         if event.key == pygame.K_ESCAPE:
             self.running = False
@@ -172,6 +205,9 @@ class Game:
         """Route a left-click based on the current state/sub-mode."""
         if self.name_entry_active:
             return  # clicks don't confirm initials (avoid accidental submits)
+        if self.state in self._MENU_STATES:
+            self._confirm_menu()
+            return
         if self.state == config.STATE_LEADERBOARD:
             self._leave_leaderboard()
             return
@@ -184,7 +220,7 @@ class Game:
         """Show the leaderboard, remembering where to return afterwards."""
         if self._pending_state is not None:
             return
-        self.leaderboard = storage.load_leaderboard()
+        self.leaderboard = storage.load_leaderboard(mode_id=self.run_mode.id)
         self.leaderboard_return = self.state
         if self.state == config.STATE_TITLE:
             self.entry_rank = -1  # no fresh entry to highlight
@@ -208,10 +244,58 @@ class Game:
                 self.entry_initials += ch
 
     def _submit_name(self) -> None:
-        """Persist the entered initials to the leaderboard and stop editing."""
+        """Persist the entered initials to the current mode's board; stop editing."""
         name = self.entry_initials or config.DEFAULT_INITIALS
-        self.leaderboard, self.entry_rank = storage.add_score(name, self.score)
+        self.leaderboard, self.entry_rank = storage.add_score(
+            name, self.score, mode_id=self.run_mode.id
+        )
         self.name_entry_active = False
+
+    # ------------------------------------------------------------------ #
+    # Menu screens (mode / character / shop select)
+    # ------------------------------------------------------------------ #
+    def _open_menu(self, state: str) -> None:
+        """Open a list-selection screen, positioning the cursor sensibly."""
+        if self._pending_state is not None:
+            return
+        if state == config.STATE_MODESELECT:
+            ids = [m.id for m in modes.MODES]
+            self.menu_index = ids.index(self.profile["selected_mode"]) \
+                if self.profile["selected_mode"] in ids else 0
+        else:
+            self.menu_index = 0
+        self._begin_transition(state)
+
+    def _menu_length(self) -> int:
+        """Number of selectable rows on the current menu screen."""
+        if self.state == config.STATE_MODESELECT:
+            return len(modes.MODES)
+        return 0
+
+    def _handle_menu_key(self, event: pygame.event.Event) -> None:
+        """Navigate / confirm / cancel on a list-selection screen."""
+        n = max(1, self._menu_length())
+        if event.key in (pygame.K_UP, pygame.K_LEFT, pygame.K_w):
+            self.menu_index = (self.menu_index - 1) % n
+        elif event.key in (pygame.K_DOWN, pygame.K_RIGHT, pygame.K_s):
+            self.menu_index = (self.menu_index + 1) % n
+        elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+            self._confirm_menu()
+        elif event.key in (pygame.K_ESCAPE, pygame.K_b):
+            if self._pending_state is None:
+                self._begin_transition(config.STATE_TITLE)
+
+    def _confirm_menu(self) -> None:
+        """Apply the highlighted selection on the current menu screen."""
+        if self._pending_state is not None:
+            return
+        if self.state == config.STATE_MODESELECT:
+            mode = modes.MODES[self.menu_index % len(modes.MODES)]
+            self.profile["selected_mode"] = mode.id
+            self.run_mode = mode
+            storage.set_selected("selected_mode", mode.id)
+            self.highscore = self._mode_best(mode.id)
+            self._begin_transition(config.STATE_TITLE)
 
     # ------------------------------------------------------------------ #
     # Update
@@ -229,8 +313,8 @@ class Game:
             self._update_playing(dt)
         elif self.state == config.STATE_GAMEOVER:
             self._update_gameover(dt)
-        elif self.state == config.STATE_LEADERBOARD:
-            self._update_leaderboard(dt)
+        elif self.state in (config.STATE_LEADERBOARD, *self._MENU_STATES):
+            self._update_idle(dt)
 
     def _update_transition(self) -> None:
         """Drive the black-fade cross between states."""
@@ -257,8 +341,8 @@ class Game:
         self.whale.idle_bob(config.WHALE_START_Y, dt)
         self.particles.update(dt)
 
-    def _update_leaderboard(self, dt: float) -> None:
-        """Keep the scene alive while viewing the leaderboard."""
+    def _update_idle(self, dt: float) -> None:
+        """Keep the scene alive on non-gameplay screens (leaderboard/menus)."""
         self.whale.idle_bob(config.WHALE_START_Y, dt)
         self.particles.update(dt)
 
@@ -280,7 +364,28 @@ class Game:
         self.particles.update(dt)
 
         if self.field.collides(self.whale.rect) or self.whale.hits_bounds():
+            self._resolve_collision()
+
+    def _resolve_collision(self) -> None:
+        """Decide what a collision means for the active mode.
+
+        Zen mode never ends the run — the whale is simply kept inside the
+        surface/seabed band and swims through coral. Other modes die.
+        """
+        if self.run_mode.no_death:
+            self._clamp_whale_to_bounds()
+        else:
             self._on_death()
+
+    def _clamp_whale_to_bounds(self) -> None:
+        """Keep the whale within the playable band (used by Zen mode)."""
+        rect = self.whale.rect
+        if rect.top < config.WATER_SURFACE_Y:
+            self.whale.y = config.WATER_SURFACE_Y + rect.height / 2
+            self.whale.vy = max(0.0, self.whale.vy)
+        elif rect.bottom > config.SEABED_Y:
+            self.whale.y = config.SEABED_Y - rect.height / 2
+            self.whale.vy = min(0.0, self.whale.vy)
 
     def _update_gameover(self, dt: float) -> None:
         """Let the whale sink to the seabed and particles settle."""
@@ -291,22 +396,30 @@ class Game:
         self.particles.update(dt, spawn_ambient=True)
 
     def _on_death(self) -> None:
-        """Handle a collision: juice, sound, high-score, state change."""
+        """Handle a collision: juice, sound, best-score, state change."""
         self.audio.play("hit")
         self.shake = config.SHAKE_ON_HIT
         self.flash = config.FLASH_ON_HIT_ALPHA
         self.particles.emit_splash(self.whale.x, self.whale.y)
         self.whale.alive = False
 
-        if self.score > self.highscore:
-            self.highscore = self.score
-            self.new_best = True
-            storage.save_highscore(self.highscore)
+        # Record the best score for this mode. Normal keeps the legacy
+        # high-score file; other modes record into the profile.
+        if self.run_mode.id == config.DEFAULT_MODE:
+            self.new_best = self.score > self.highscore
+            if self.new_best:
+                self.highscore = self.score
+                storage.save_highscore(self.highscore)
+        else:
+            self.new_best = storage.record_mode_score(self.run_mode.id, self.score)
+            if self.new_best:
+                self.highscore = self.score
+                self.profile = storage.load_profile()  # refresh cached bests
 
-        # If the run earns a leaderboard slot, start arcade initials entry.
+        # If the run earns a slot on this mode's leaderboard, enter initials.
         self.entry_rank = -1
         self.entry_initials = ""
-        self.name_entry_active = storage.qualifies(self.score)
+        self.name_entry_active = storage.qualifies(self.score, mode_id=self.run_mode.id)
 
         self.state = config.STATE_GAMEOVER
         self.state_time = 0.0
@@ -344,6 +457,8 @@ class Game:
             self._draw_gameover()
         elif self.state == config.STATE_LEADERBOARD:
             self._draw_leaderboard()
+        elif self.state == config.STATE_MODESELECT:
+            self._draw_modeselect()
 
         self._draw_flash()
         self._draw_fade()
@@ -408,10 +523,10 @@ class Game:
         rect = prompt.get_rect(center=(cx, config.SCREEN_HEIGHT - 210))
         self.screen.blit(prompt, rect)
 
-        self._text("small", f"Best: {self.highscore}", config.TEXT_ACCENT,
-                   (cx, config.SCREEN_HEIGHT - 160))
-        self._text("small", "L  ·  Leaderboard", config.TEXT_COLOR,
-                   (cx, config.SCREEN_HEIGHT - 128))
+        self._text("small", f"Mode: {self.run_mode.name}   ·   Best: {self.highscore}",
+                   config.TEXT_ACCENT, (cx, config.SCREEN_HEIGHT - 162))
+        self._text("small", "D  Mode      L  Leaderboard", config.TEXT_COLOR,
+                   (cx, config.SCREEN_HEIGHT - 130))
 
     def _draw_gameover(self) -> None:
         """Draw the game-over panel: score, best/entry, and either name entry
@@ -522,11 +637,13 @@ class Game:
         self.screen.blit(panel, prect)
 
         inner_cx = prect.centerx
-        self._text("large", "Leaderboard", config.TEXT_ACCENT, (inner_cx, prect.top + 40))
+        self._text("large", "Leaderboard", config.TEXT_ACCENT, (inner_cx, prect.top + 36))
+        self._text("small", f"{self.run_mode.name} mode", config.TEXT_COLOR,
+                   (inner_cx, prect.top + 68))
 
         left = prect.left + 30
         right = prect.right - 30
-        row_top = prect.top + 86
+        row_top = prect.top + 104
         row_h = 40
 
         if not self.leaderboard:
@@ -554,6 +671,49 @@ class Game:
         back = self.fonts["small"].render("Tap / Space to return", True, config.TEXT_COLOR)
         back.set_alpha(int(120 + 135 * pulse))
         self.screen.blit(back, back.get_rect(center=(inner_cx, prect.bottom - 26)))
+
+    def _draw_modeselect(self) -> None:
+        """Draw the mode-selection panel with per-mode bests and a cursor."""
+        cx = config.SCREEN_WIDTH // 2
+        t = ease_out_cubic(clamp(self.state_time / 26.0, 0.0, 1.0))
+        panel_w, panel_h = 380, 470
+        panel_y = int(lerp(-panel_h, config.SCREEN_HEIGHT // 2 - panel_h // 2, t))
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (*config.PANEL_COLOR, 238), panel.get_rect(), border_radius=26)
+        pygame.draw.rect(panel, (*config.PANEL_BORDER, 255), panel.get_rect(), width=3, border_radius=26)
+        prect = panel.get_rect(center=(cx, config.SCREEN_HEIGHT // 2))
+        prect.y = panel_y
+        self.screen.blit(panel, prect)
+
+        inner_cx = prect.centerx
+        self._text("large", "Select Mode", config.TEXT_ACCENT, (inner_cx, prect.top + 42))
+
+        left = prect.left + 26
+        right = prect.right - 26
+        row_top = prect.top + 108
+        row_h = 78
+        for i, mode in enumerate(modes.MODES):
+            y = row_top + i * row_h
+            selected = i == self.menu_index
+            color = config.TEXT_ACCENT if selected else config.TEXT_COLOR
+            if selected:
+                hl = pygame.Rect(left - 8, y - row_h // 2 + 6, right - left + 16, row_h - 12)
+                hi = pygame.Surface(hl.size, pygame.SRCALPHA)
+                hi.fill((*config.PANEL_BORDER, 52))
+                pygame.draw.rect(hi, (*config.PANEL_BORDER, 52), hi.get_rect(), border_radius=12)
+                self.screen.blit(hi, hl)
+            equipped = mode.id == self.profile["selected_mode"]
+            name = ("* " if equipped else "") + mode.name
+            name_img = self.fonts["medium"].render(name, True, color)
+            self.screen.blit(name_img, name_img.get_rect(midleft=(left + 6, y - 14)))
+            best_img = self.fonts["small"].render(f"best {self._mode_best(mode.id)}", True, color)
+            self.screen.blit(best_img, best_img.get_rect(midright=(right - 4, y - 14)))
+            tag_img = self.fonts["small"].render(mode.tagline, True, config.TEXT_COLOR)
+            tag_img.set_alpha(200 if selected else 130)
+            self.screen.blit(tag_img, tag_img.get_rect(midleft=(left + 6, y + 14)))
+
+        self._text("small", "Up/Down choose   ·   Enter select   ·   Esc back",
+                   config.TEXT_COLOR, (inner_cx, prect.bottom - 24))
 
     def _draw_flash(self) -> None:
         """White impact flash overlay."""
