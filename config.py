@@ -107,6 +107,9 @@ SCORE_POP_RISE: float = 1.1
 GODRAY_COUNT: int = 5
 GODRAY_SPEED: float = 0.0016        # Sway speed of the light shafts.
 GODRAY_MAX_ALPHA: int = 42
+GODRAY_TOP_WIDTH: int = 22          # Beam width at the surface.
+GODRAY_BOTTOM_WIDTH: int = 64       # Beam width where it fades out in the deep.
+GODRAY_SWAY_PX: float = 26.0        # Horizontal sway amplitude of each beam.
 
 PLANKTON_COUNT: int = 46            # Drifting specks in the mid layer.
 PLANKTON_DRIFT_SPEED: float = 0.25

@@ -61,7 +61,7 @@ class _FarFish:
         body = pygame.Rect(0, 0, int(self.size * 1.8), int(self.size))
         body.center = (int(x), int(y))
         surf = pygame.Surface((body.width + 10, body.height + 6), pygame.SRCALPHA)
-        cx, cy = surf.get_width() // 2, surf.get_height() // 2
+        cy = surf.get_height() // 2
         pygame.draw.ellipse(surf, (*col, 70), (2, 3, body.width, body.height))
         pygame.draw.polygon(
             surf, (*col, 70),
@@ -123,7 +123,7 @@ class Scene:
         )
         ray_len = config.SEABED_Y - config.WATER_SURFACE_Y
         self._godray_sprite = art.build_godray(
-            ray_len, top_w=22, bottom_w=64,
+            ray_len, top_w=config.GODRAY_TOP_WIDTH, bottom_w=config.GODRAY_BOTTOM_WIDTH,
             color=config.GODRAY_COLOR, max_alpha=config.GODRAY_MAX_ALPHA,
         )
         self._vignette = art.build_vignette(
@@ -180,7 +180,7 @@ class Scene:
         """Draw soft, slowly swaying light shafts descending from the surface."""
         for ray in self._godrays:
             phase = ray["phase"] + self.time * config.GODRAY_SPEED * ray["speed"]
-            sway = math.sin(phase) * 26
+            sway = math.sin(phase) * config.GODRAY_SWAY_PX
             # Gentle breathing of the beam's brightness.
             brightness = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(phase * 0.6))
             tilt = ray["tilt"] + math.sin(phase * 0.5) * 3
