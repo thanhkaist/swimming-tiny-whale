@@ -156,6 +156,7 @@ SHAKE_ON_HIT: float = 16.0          # Initial screen-shake magnitude (px).
 SHAKE_DECAY: float = 0.86           # Per-frame shake damping.
 FLASH_ON_HIT_ALPHA: int = 130       # White flash alpha on collision.
 FLASH_DECAY: int = 8                # Flash alpha reduction per frame.
+LOCKED_FLASH_ALPHA: int = 70        # Gentle flash when a locked item is picked.
 STATE_FADE_SPEED: int = 22          # Alpha step for screen transitions.
 VIGNETTE_STRENGTH: int = 115        # Max corner darkening alpha (0 disables).
 SCORE_POP_SCALE: float = 0.42       # Extra scale of the HUD number on a point.
@@ -186,6 +187,32 @@ WHALE_BELLY: tuple[int, int, int] = (232, 244, 252)
 WHALE_CHEEK: tuple[int, int, int] = (246, 168, 176)
 WHALE_EYE: tuple[int, int, int] = (34, 44, 58)
 WHALE_SPOUT: tuple[int, int, int] = (236, 252, 255)
+
+# --------------------------------------------------------------------------- #
+# Whale characters (skins + feel). "classic" reuses the base WHALE_* palette
+# and neutral 1.0 physics scales so the default whale is unchanged.
+# --------------------------------------------------------------------------- #
+CHAR_CORAL_COST: int = 60
+CHAR_ORCA_COST: int = 140
+CHAR_PIP_COST: int = 220
+
+CHAR_CORAL_BODY: tuple[int, int, int] = (232, 140, 170)
+CHAR_CORAL_LIGHT: tuple[int, int, int] = (246, 180, 205)
+CHAR_CORAL_OUTLINE: tuple[int, int, int] = (150, 70, 110)
+CHAR_CORAL_BELLY: tuple[int, int, int] = (255, 238, 246)
+CHAR_CORAL_GLOW: tuple[int, int, int] = (250, 190, 215)
+
+CHAR_ORCA_BODY: tuple[int, int, int] = (60, 72, 92)
+CHAR_ORCA_LIGHT: tuple[int, int, int] = (96, 110, 132)
+CHAR_ORCA_OUTLINE: tuple[int, int, int] = (24, 30, 44)
+CHAR_ORCA_BELLY: tuple[int, int, int] = (238, 244, 250)
+CHAR_ORCA_GLOW: tuple[int, int, int] = (150, 170, 200)
+
+CHAR_PIP_BODY: tuple[int, int, int] = (96, 196, 168)
+CHAR_PIP_LIGHT: tuple[int, int, int] = (140, 224, 196)
+CHAR_PIP_OUTLINE: tuple[int, int, int] = (40, 120, 100)
+CHAR_PIP_BELLY: tuple[int, int, int] = (240, 252, 246)
+CHAR_PIP_GLOW: tuple[int, int, int] = (170, 236, 214)
 
 CORAL_COLORS: tuple[tuple[int, int, int], ...] = (
     (232, 120, 128),   # rosy coral

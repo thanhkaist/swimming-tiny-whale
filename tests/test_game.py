@@ -295,6 +295,38 @@ def test_collected_coins_bank_on_death(temp_storage) -> None:  # noqa: ANN001
     assert storage.load_profile()["coins"] >= config.COIN_VALUE
 
 
+def test_select_unlocked_character(temp_storage) -> None:  # noqa: ANN001
+    import characters
+
+    game = Game()
+    game.profile["unlocked"] = ["classic", "orca"]
+    _press_key(pygame.K_c)
+    _advance(game, 30)
+    assert game.state == config.STATE_CHARSELECT
+    game.menu_index = [c.id for c in characters.CHARACTERS].index("orca")
+    _press_key(pygame.K_RETURN)
+    _advance(game, 30)
+    assert game.state == config.STATE_TITLE
+    assert game.profile["selected_character"] == "orca"
+    assert game.whale.spec.id == "orca"
+
+
+def test_cannot_select_locked_character(temp_storage) -> None:  # noqa: ANN001
+    import characters
+
+    game = Game()
+    game.profile["unlocked"] = ["classic"]
+    _press_key(pygame.K_c)
+    _advance(game, 30)
+    assert game.state == config.STATE_CHARSELECT
+    game.menu_index = [c.id for c in characters.CHARACTERS].index("pip")
+    _press_key(pygame.K_RETURN)
+    _advance(game, 10)
+    # Locked pick is rejected: stays on the select screen, selection unchanged.
+    assert game.state == config.STATE_CHARSELECT
+    assert game.profile["selected_character"] == "classic"
+
+
 def test_coins_bank_on_quit_in_zen(temp_storage) -> None:  # noqa: ANN001
     import storage
     from collectibles import Coin

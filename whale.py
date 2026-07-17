@@ -19,13 +19,28 @@ from util import clamp, lerp
 class Whale:
     """A whale that sinks under gravity and swims upward on demand."""
 
-    def __init__(self, x: float | None = None, y: float | None = None) -> None:
-        """Create a whale at ``(x, y)`` (defaults from config)."""
+    def __init__(
+        self,
+        x: float | None = None,
+        y: float | None = None,
+        spec: "object | None" = None,
+    ) -> None:
+        """Create a whale at ``(x, y)`` using ``spec`` (defaults to Classic).
+
+        ``spec`` is a ``characters.WhaleSpec``; the default is numerically and
+        visually identical to the original whale (neutral 1.0 scales, base
+        palette), so existing callers/tests are unaffected.
+        """
+        import characters  # local import avoids a module-load cycle
+
+        self.spec = spec if spec is not None else characters.default()
         self.x: float = float(config.WHALE_START_X if x is None else x)
         self.y: float = float(config.WHALE_START_Y if y is None else y)
         self.vy: float = 0.0
         self.width: int = config.WHALE_WIDTH
         self.height: int = config.WHALE_HEIGHT
+        # Base hitbox scale from the spec; power-ups (Phase 5) may lower it live.
+        self.hitbox_scale: float = self.spec.hitbox_scale
 
         # Visual-only state.
         self.tilt: float = 0.0            # Current drawn tilt in degrees.
@@ -42,8 +57,8 @@ class Whale:
     # Physics
     # ------------------------------------------------------------------ #
     def swim(self) -> None:
-        """Apply an upward impulse (the flap)."""
-        self.vy = config.SWIM_IMPULSE
+        """Apply an upward impulse (the flap), scaled by the character."""
+        self.vy = config.SWIM_IMPULSE * self.spec.impulse_scale
         self.flap_energy = config.WHALE_TAIL_FLAP_SWIM_BOOST
 
     def update(self, dt: float = 1.0, apply_gravity: bool = True) -> None:
@@ -53,7 +68,7 @@ class Whale:
         title screen for the idle bob).
         """
         if apply_gravity:
-            self.vy += config.GRAVITY * dt
+            self.vy += config.GRAVITY * self.spec.gravity_scale * dt
             self.vy = clamp(self.vy, config.MAX_RISE_SPEED, config.MAX_FALL_SPEED)
             self.y += self.vy * dt
 
@@ -88,10 +103,15 @@ class Whale:
     # ------------------------------------------------------------------ #
     @property
     def rect(self) -> pygame.Rect:
-        """Forgiving collision rectangle (a little smaller than the art)."""
-        w = self.width - config.WHALE_HITBOX_SHRINK_X
-        h = self.height - config.WHALE_HITBOX_SHRINK_Y
-        rect = pygame.Rect(0, 0, w, h)
+        """Forgiving collision rectangle (a little smaller than the art).
+
+        The character's ``hitbox_scale`` (1.0 for most, smaller for tiny whales
+        or while shrunk by a power-up) shrinks it further. At scale 1.0 this is
+        identical to the original hitbox.
+        """
+        w = (self.width - config.WHALE_HITBOX_SHRINK_X) * self.hitbox_scale
+        h = (self.height - config.WHALE_HITBOX_SHRINK_Y) * self.hitbox_scale
+        rect = pygame.Rect(0, 0, int(round(w)), int(round(h)))
         rect.center = (int(self.x), int(self.y))
         return rect
 
@@ -120,7 +140,7 @@ class Whale:
         sprite = self._sprite_cache.get(bucket)
         if sprite is None:
             phase = bucket / 12 * math.tau
-            sprite = draw.build_whale_surface(phase)
+            sprite = draw.build_whale_surface(phase, self.spec)
             self._sprite_cache[bucket] = sprite
         return sprite
 
@@ -131,7 +151,7 @@ class Whale:
         if self._glow is None:
             from assets import draw  # rendering-only dependency
 
-            self._glow = draw.radial_glow(int(self.width * 0.95), config.WHALE_GLOW, 70)
+            self._glow = draw.radial_glow(int(self.width * 0.95), self.spec.glow, 70)
         glow_rect = self._glow.get_rect(center=(cx, cy))
         target.blit(self._glow, glow_rect)
 
@@ -150,4 +170,5 @@ class Whale:
         self.vy = 0.0
         self.tilt = 0.0
         self.flap_energy = 0.0
+        self.hitbox_scale = self.spec.hitbox_scale
         self.alive = True

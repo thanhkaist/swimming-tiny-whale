@@ -153,13 +153,20 @@ def _blob_points(
     return pts
 
 
-def build_whale_surface(flap_phase: float) -> pygame.Surface:
+def build_whale_surface(flap_phase: float, spec: "object | None" = None) -> pygame.Surface:
     """Build the whale sprite for a given tail-flap phase.
 
     Returns an upright (facing right) RGBA surface. Callers rotate it to apply
     tilt. ``flap_phase`` (radians) drives the tail's up/down swing so the whale
-    looks like it is gently swimming.
+    looks like it is gently swimming. ``spec`` (a ``characters.WhaleSpec``)
+    supplies the palette; ``None`` uses the base ``WHALE_*`` colours so the
+    default whale is pixel-identical to before.
     """
+    body = spec.body if spec is not None else config.WHALE_BODY
+    body_light = spec.body_light if spec is not None else config.WHALE_BODY_LIGHT
+    outline = spec.outline if spec is not None else config.WHALE_OUTLINE
+    belly = spec.belly if spec is not None else config.WHALE_BELLY
+
     w, h = config.WHALE_WIDTH, config.WHALE_HEIGHT
     pad = 16  # room for the tail swing and outline
     surf = pygame.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
@@ -179,28 +186,28 @@ def build_whale_surface(flap_phase: float) -> pygame.Surface:
     tail_mid = (tail_base_x + 8, body_cy)
     pygame.draw.polygon(
         surf,
-        config.WHALE_BODY,
+        body,
         [tail_top, tail_mid, tail_bot],
     )
     pygame.draw.polygon(
         surf,
-        config.WHALE_BODY_LIGHT,
+        body_light,
         [tail_top, tail_mid, ((tail_top[0] + tail_mid[0]) / 2, (tail_top[1] + tail_mid[1]) / 2)],
     )
 
     # --- Body (rounded blob) ------------------------------------------------
     # Soft darker outline first (a slightly larger blob) for definition.
     outline_pts = _blob_points(body_cx, body_cy, body_rx + 2.2, body_ry + 2.2)
-    pygame.draw.polygon(surf, config.WHALE_OUTLINE, outline_pts)
+    pygame.draw.polygon(surf, outline, outline_pts)
     body_pts = _blob_points(body_cx, body_cy, body_rx, body_ry)
-    pygame.draw.polygon(surf, config.WHALE_BODY, body_pts)
+    pygame.draw.polygon(surf, body, body_pts)
     # Lighter top for a soft top-lit look.
     top_pts = _blob_points(body_cx, body_cy - body_ry * 0.28, body_rx * 0.92, body_ry * 0.55)
-    pygame.draw.polygon(surf, config.WHALE_BODY_LIGHT, top_pts)
+    pygame.draw.polygon(surf, body_light, top_pts)
 
     # --- Belly (lighter underside) -----------------------------------------
     belly_pts = _blob_points(body_cx + 3, body_cy + body_ry * 0.42, body_rx * 0.72, body_ry * 0.42)
-    pygame.draw.polygon(surf, config.WHALE_BELLY, belly_pts)
+    pygame.draw.polygon(surf, belly, belly_pts)
 
     # --- Side fin -----------------------------------------------------------
     fin_x = body_cx - 2
@@ -208,7 +215,7 @@ def build_whale_surface(flap_phase: float) -> pygame.Surface:
     fin_swing = math.sin(flap_phase + 1.0) * 3.0
     pygame.draw.polygon(
         surf,
-        config.WHALE_BODY_LIGHT,
+        body_light,
         [
             (fin_x, fin_y),
             (fin_x - 14, fin_y + 10 + fin_swing),
@@ -223,7 +230,7 @@ def build_whale_surface(flap_phase: float) -> pygame.Surface:
     # --- Eye ----------------------------------------------------------------
     eye_x = int(body_cx + body_rx * 0.5)
     eye_y = int(body_cy - body_ry * 0.18)
-    pygame.draw.circle(surf, config.WHALE_BELLY, (eye_x, eye_y), 6)
+    pygame.draw.circle(surf, belly, (eye_x, eye_y), 6)
     pygame.draw.circle(surf, config.WHALE_EYE, (eye_x + 1, eye_y), 4)
     pygame.draw.circle(surf, (255, 255, 255), (eye_x + 2, eye_y - 2), 1)
 

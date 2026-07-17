@@ -14,6 +14,7 @@ import sys
 
 import pygame
 
+import characters
 import config
 import modes
 import storage
@@ -39,7 +40,6 @@ class Game:
         self.audio = Audio()
 
         self.scene = Scene()
-        self.whale = Whale()
         self.field = ObstacleField(self.rng)
         self.collectibles = CollectibleField(self.rng)
         self.particles = ParticleSystem(self.rng)
@@ -54,11 +54,15 @@ class Game:
         self.profile = storage.load_profile()
         self.coins = self.profile["coins"]
 
+        # Whale uses the selected character skin/feel.
+        self.whale = Whale(spec=characters.by_id(self.profile["selected_character"]))
+
         # Active mode for the (next) run + its current best score.
         self.run_mode = modes.by_id(self.profile["selected_mode"])
         self.highscore = self._mode_best(self.run_mode.id)
         self.menu_index = 0           # shared cursor for menu screens
         self.run_coins = 0            # coins collected in the current run
+        self._char_previews: dict[str, pygame.Surface] = {}  # skin thumbnails
 
         # Leaderboard + arcade-style name entry.
         self.leaderboard = storage.load_leaderboard()
@@ -141,7 +145,8 @@ class Game:
         self.field = ObstacleField(run_rng, mode=self.run_mode)
         self.collectibles = CollectibleField(coin_rng, mode=self.run_mode)
 
-        self.whale.reset()
+        # Rebuild the whale so the run always matches the selected character.
+        self.whale = Whale(spec=characters.by_id(self.profile["selected_character"]))
         self.particles.clear()
         self.score = 0
         self.run_coins = 0
@@ -221,6 +226,9 @@ class Game:
         if self.state == config.STATE_TITLE and event.key == pygame.K_d:
             self._open_menu(config.STATE_MODESELECT)
             return
+        if self.state == config.STATE_TITLE and event.key == pygame.K_c:
+            self._open_menu(config.STATE_CHARSELECT)
+            return
         if event.key == pygame.K_ESCAPE:
             self._request_quit()
             return
@@ -288,6 +296,10 @@ class Game:
             ids = [m.id for m in modes.MODES]
             self.menu_index = ids.index(self.profile["selected_mode"]) \
                 if self.profile["selected_mode"] in ids else 0
+        elif state == config.STATE_CHARSELECT:
+            ids = [c.id for c in characters.CHARACTERS]
+            self.menu_index = ids.index(self.profile["selected_character"]) \
+                if self.profile["selected_character"] in ids else 0
         else:
             self.menu_index = 0
         self._begin_transition(state)
@@ -296,6 +308,8 @@ class Game:
         """Number of selectable rows on the current menu screen."""
         if self.state == config.STATE_MODESELECT:
             return len(modes.MODES)
+        if self.state == config.STATE_CHARSELECT:
+            return len(characters.CHARACTERS)
         return 0
 
     def _handle_menu_key(self, event: pygame.event.Event) -> None:
@@ -322,6 +336,16 @@ class Game:
             storage.set_selected("selected_mode", mode.id)
             self.highscore = self._mode_best(mode.id)
             self._begin_transition(config.STATE_TITLE)
+        elif self.state == config.STATE_CHARSELECT:
+            spec = characters.CHARACTERS[self.menu_index % len(characters.CHARACTERS)]
+            if spec.id in self.profile["unlocked"]:
+                self.profile["selected_character"] = spec.id
+                storage.set_selected("selected_character", spec.id)
+                self.whale = Whale(spec=spec)  # reflect on the title idle
+                self._begin_transition(config.STATE_TITLE)
+            else:
+                # Locked — nudge with a brief flash; unlock happens in the shop.
+                self.flash = config.LOCKED_FLASH_ALPHA
 
     # ------------------------------------------------------------------ #
     # Update
@@ -500,6 +524,8 @@ class Game:
             self._draw_leaderboard()
         elif self.state == config.STATE_MODESELECT:
             self._draw_modeselect()
+        elif self.state == config.STATE_CHARSELECT:
+            self._draw_charselect()
 
         self._draw_flash()
         self._draw_fade()
@@ -578,9 +604,9 @@ class Game:
         self.screen.blit(prompt, rect)
 
         self._text("small", f"Mode: {self.run_mode.name}   ·   Best: {self.highscore}",
-                   config.TEXT_ACCENT, (cx, config.SCREEN_HEIGHT - 162))
-        self._text("small", "D  Mode      L  Leaderboard", config.TEXT_COLOR,
-                   (cx, config.SCREEN_HEIGHT - 130))
+                   config.TEXT_ACCENT, (cx, config.SCREEN_HEIGHT - 168))
+        self._text("small", "D Mode    C Whale    L Board", config.TEXT_COLOR,
+                   (cx, config.SCREEN_HEIGHT - 136))
 
     def _draw_gameover(self) -> None:
         """Draw the game-over panel: score, best/entry, and either name entry
@@ -768,6 +794,73 @@ class Game:
 
         self._text("small", "Up/Down choose   ·   Enter select   ·   Esc back",
                    config.TEXT_COLOR, (inner_cx, prect.bottom - 24))
+
+    def _char_preview(self, spec: "characters.WhaleSpec") -> pygame.Surface:
+        """Return a cached small whale thumbnail for ``spec``."""
+        cached = self._char_previews.get(spec.id)
+        if cached is None:
+            from assets import draw as art
+            base = art.build_whale_surface(0.0, spec)
+            scale = 0.8
+            cached = pygame.transform.smoothscale(
+                base, (int(base.get_width() * scale), int(base.get_height() * scale)))
+            self._char_previews[spec.id] = cached
+        return cached
+
+    def _draw_charselect(self) -> None:
+        """Draw the character carousel with previews, feel, and lock/cost."""
+        cx = config.SCREEN_WIDTH // 2
+        t = ease_out_cubic(clamp(self.state_time / 26.0, 0.0, 1.0))
+        panel_w, panel_h = 400, 500
+        panel_y = int(lerp(-panel_h, config.SCREEN_HEIGHT // 2 - panel_h // 2, t))
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (*config.PANEL_COLOR, 238), panel.get_rect(), border_radius=26)
+        pygame.draw.rect(panel, (*config.PANEL_BORDER, 255), panel.get_rect(), width=3, border_radius=26)
+        prect = panel.get_rect(center=(cx, config.SCREEN_HEIGHT // 2))
+        prect.y = panel_y
+        self.screen.blit(panel, prect)
+
+        inner_cx = prect.centerx
+        self._text("large", "Whales", config.TEXT_ACCENT, (inner_cx, prect.top + 40))
+
+        left = prect.left + 24
+        right = prect.right - 24
+        row_top = prect.top + 104
+        row_h = 84
+        for i, spec in enumerate(characters.CHARACTERS):
+            y = row_top + i * row_h
+            selected = i == self.menu_index
+            unlocked = spec.id in self.profile["unlocked"]
+            color = config.TEXT_ACCENT if selected else config.TEXT_COLOR
+            if selected:
+                hl = pygame.Rect(left - 6, y - row_h // 2 + 6, right - left + 12, row_h - 12)
+                hi = pygame.Surface(hl.size, pygame.SRCALPHA)
+                pygame.draw.rect(hi, (*config.PANEL_BORDER, 52), hi.get_rect(), border_radius=12)
+                self.screen.blit(hi, hl)
+            # Whale thumbnail (dimmed if locked).
+            thumb = self._char_preview(spec)
+            if not unlocked:
+                thumb = thumb.copy()
+                thumb.fill((90, 90, 90, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            self.screen.blit(thumb, thumb.get_rect(center=(left + 40, y)))
+            # Name + equipped marker.
+            equipped = spec.id == self.profile["selected_character"]
+            name = ("* " if equipped else "") + spec.name
+            name_img = self.fonts["medium"].render(name, True, color)
+            self.screen.blit(name_img, name_img.get_rect(midleft=(left + 88, y - 14)))
+            tag_img = self.fonts["small"].render(spec.tagline, True, config.TEXT_COLOR)
+            tag_img.set_alpha(200 if selected else 130)
+            self.screen.blit(tag_img, tag_img.get_rect(midleft=(left + 88, y + 14)))
+            # Right side: locked cost, or "owned".
+            if unlocked:
+                status, scol = "owned", config.TEXT_COLOR
+            else:
+                status, scol = f"{spec.unlock_cost} coins", config.COIN_COLOR
+            st_img = self.fonts["small"].render(status, True, scol)
+            self.screen.blit(st_img, st_img.get_rect(midright=(right - 4, y - 14)))
+
+        self._text("small", "Up/Down choose   ·   Enter select   ·   Esc back",
+                   config.TEXT_COLOR, (inner_cx, prect.bottom - 22))
 
     def _draw_flash(self) -> None:
         """White impact flash overlay."""
