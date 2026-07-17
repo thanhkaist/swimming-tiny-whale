@@ -173,6 +173,7 @@ def _default_profile() -> Profile:
     return {
         "coins": 0,
         "unlocked": [config.DEFAULT_CHARACTER],
+        "unlocked_trails": [config.DEFAULT_TRAIL],
         "selected_character": config.DEFAULT_CHARACTER,
         "selected_mode": config.DEFAULT_MODE,
         "selected_trail": config.DEFAULT_TRAIL,
@@ -197,6 +198,11 @@ def _coerce_profile(data: object) -> Profile:
         if config.DEFAULT_CHARACTER not in unlocked:
             unlocked.insert(0, config.DEFAULT_CHARACTER)
         profile["unlocked"] = unlocked
+    if isinstance(data.get("unlocked_trails"), list):
+        trails = [str(c) for c in data["unlocked_trails"] if isinstance(c, str)]
+        if config.DEFAULT_TRAIL not in trails:
+            trails.insert(0, config.DEFAULT_TRAIL)
+        profile["unlocked_trails"] = trails
     for key in ("selected_character", "selected_mode", "selected_trail"):
         if isinstance(data.get(key), str):
             profile[key] = data[key]
@@ -256,6 +262,16 @@ def unlock_character(char_id: str, path: str | None = None) -> bool:
     if char_id in profile["unlocked"]:
         return False
     profile["unlocked"].append(char_id)
+    save_profile(profile, path)
+    return True
+
+
+def unlock_trail(trail_id: str, path: str | None = None) -> bool:
+    """Add ``trail_id`` to the unlocked trails. Return True if newly unlocked."""
+    profile = load_profile(path)
+    if trail_id in profile["unlocked_trails"]:
+        return False
+    profile["unlocked_trails"].append(trail_id)
     save_profile(profile, path)
     return True
 

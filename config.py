@@ -214,6 +214,22 @@ CHAR_PIP_OUTLINE: tuple[int, int, int] = (40, 120, 100)
 CHAR_PIP_BELLY: tuple[int, int, int] = (240, 252, 246)
 CHAR_PIP_GLOW: tuple[int, int, int] = (170, 236, 214)
 
+# --------------------------------------------------------------------------- #
+# Cosmetic trails (a stream of particles behind the whale while playing)
+# --------------------------------------------------------------------------- #
+TRAIL_BUBBLES_COST: int = 40
+TRAIL_SPARKLE_COST: int = 90
+TRAIL_RAINBOW_COST: int = 160
+TRAIL_EMIT_INTERVAL: float = 3.0     # Frames between trail particles.
+TRAIL_LIFETIME: int = 34             # Frames a trail bit lives.
+TRAIL_BUBBLES_COLOR: tuple[int, int, int] = (196, 240, 255)
+TRAIL_SPARKLE_COLOR: tuple[int, int, int] = (255, 224, 130)
+# Rainbow cycles through these.
+TRAIL_RAINBOW_COLORS: tuple[tuple[int, int, int], ...] = (
+    (255, 138, 138), (255, 200, 120), (150, 224, 150),
+    (130, 200, 255), (200, 160, 255),
+)
+
 CORAL_COLORS: tuple[tuple[int, int, int], ...] = (
     (232, 120, 128),   # rosy coral
     (240, 158, 96),    # warm orange

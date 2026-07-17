@@ -18,12 +18,14 @@ import characters
 import config
 import modes
 import storage
+import trails
+import ui
 from audio import Audio
 from collectibles import CollectibleField
 from obstacles import ObstacleField
 from particles import ParticleSystem
 from scene import Scene
-from util import clamp, ease_out_cubic, lerp
+from util import clamp, ease_out_cubic
 from whale import Whale
 
 
@@ -63,6 +65,9 @@ class Game:
         self.menu_index = 0           # shared cursor for menu screens
         self.run_coins = 0            # coins collected in the current run
         self._char_previews: dict[str, pygame.Surface] = {}  # skin thumbnails
+        self.shop_items: list[dict] = []   # built when the shop opens
+        self._trail_timer = 0.0
+        self._trail_color_i = 0
 
         # Leaderboard + arcade-style name entry.
         self.leaderboard = storage.load_leaderboard()
@@ -229,6 +234,9 @@ class Game:
         if self.state == config.STATE_TITLE and event.key == pygame.K_c:
             self._open_menu(config.STATE_CHARSELECT)
             return
+        if self.state == config.STATE_TITLE and event.key == pygame.K_s:
+            self._open_menu(config.STATE_SHOP)
+            return
         if event.key == pygame.K_ESCAPE:
             self._request_quit()
             return
@@ -300,9 +308,30 @@ class Game:
             ids = [c.id for c in characters.CHARACTERS]
             self.menu_index = ids.index(self.profile["selected_character"]) \
                 if self.profile["selected_character"] in ids else 0
+        elif state == config.STATE_SHOP:
+            self.shop_items = self._build_shop_items()
+            self.menu_index = 0
         else:
             self.menu_index = 0
         self._begin_transition(state)
+
+    def _build_shop_items(self) -> list[dict]:
+        """Build the current shop listing: locked characters, then trails."""
+        items: list[dict] = []
+        for spec in characters.CHARACTERS:
+            if spec.id not in self.profile["unlocked"]:
+                items.append({"kind": "char", "id": spec.id,
+                              "name": spec.name, "cost": spec.unlock_cost})
+        for tr in trails.TRAILS:
+            owned = tr.id in self.profile["unlocked_trails"]
+            items.append({"kind": "trail", "id": tr.id, "name": f"{tr.name} trail",
+                          "cost": tr.cost, "owned": owned})
+        return items
+
+    def _refresh_profile(self) -> None:
+        """Reload the profile from disk and re-sync the cached coin balance."""
+        self.profile = storage.load_profile()
+        self.coins = self.profile["coins"]
 
     def _menu_length(self) -> int:
         """Number of selectable rows on the current menu screen."""
@@ -310,6 +339,8 @@ class Game:
             return len(modes.MODES)
         if self.state == config.STATE_CHARSELECT:
             return len(characters.CHARACTERS)
+        if self.state == config.STATE_SHOP:
+            return len(self.shop_items)
         return 0
 
     def _handle_menu_key(self, event: pygame.event.Event) -> None:
@@ -345,6 +376,35 @@ class Game:
                 self._begin_transition(config.STATE_TITLE)
             else:
                 # Locked — nudge with a brief flash; unlock happens in the shop.
+                self.flash = config.LOCKED_FLASH_ALPHA
+        elif self.state == config.STATE_SHOP:
+            self._confirm_shop()
+
+    def _confirm_shop(self) -> None:
+        """Buy or equip the highlighted shop item."""
+        if not self.shop_items:
+            return
+        item = self.shop_items[self.menu_index % len(self.shop_items)]
+        if item["kind"] == "char":
+            if storage.spend_coins(item["cost"]):
+                storage.unlock_character(item["id"])
+                self.audio.play("score")
+                self._refresh_profile()
+                self.shop_items = self._build_shop_items()
+                self.menu_index = min(self.menu_index, max(0, len(self.shop_items) - 1))
+            else:
+                self.flash = config.LOCKED_FLASH_ALPHA
+        else:  # trail
+            if item["owned"]:
+                storage.set_selected("selected_trail", item["id"])
+                self._refresh_profile()
+            elif storage.spend_coins(item["cost"]):
+                storage.unlock_trail(item["id"])
+                storage.set_selected("selected_trail", item["id"])
+                self.audio.play("score")
+                self._refresh_profile()
+                self.shop_items = self._build_shop_items()
+            else:
                 self.flash = config.LOCKED_FLASH_ALPHA
 
     # ------------------------------------------------------------------ #
@@ -415,6 +475,7 @@ class Game:
             self.audio.play("score")
             self.particles.emit_score_pop(self.whale.x, self.whale.y - self.whale.height)
 
+        self._emit_trail(dt)
         coins, _powerups = self.collectibles.update(speed, self.whale, self.field, dt)
         if coins:
             self.run_coins += coins
@@ -426,6 +487,19 @@ class Game:
 
         if self.field.collides(self.whale.rect) or self.whale.hits_bounds():
             self._resolve_collision()
+
+    def _emit_trail(self, dt: float) -> None:
+        """Leave the selected cosmetic trail behind the whale."""
+        trail = trails.by_id(self.profile["selected_trail"])
+        if trail.is_none or not trail.colors:
+            return
+        self._trail_timer -= dt
+        if self._trail_timer <= 0:
+            self._trail_timer = config.TRAIL_EMIT_INTERVAL
+            self._trail_color_i += 1
+            color = trail.colors[self._trail_color_i % len(trail.colors)]
+            self.particles.emit_trail(
+                self.whale.x - self.whale.width * 0.42, self.whale.y + 4, color)
 
     def _resolve_collision(self) -> None:
         """Decide what a collision means for the active mode.
@@ -526,6 +600,8 @@ class Game:
             self._draw_modeselect()
         elif self.state == config.STATE_CHARSELECT:
             self._draw_charselect()
+        elif self.state == config.STATE_SHOP:
+            self._draw_shop()
 
         self._draw_flash()
         self._draw_fade()
@@ -604,9 +680,11 @@ class Game:
         self.screen.blit(prompt, rect)
 
         self._text("small", f"Mode: {self.run_mode.name}   ·   Best: {self.highscore}",
-                   config.TEXT_ACCENT, (cx, config.SCREEN_HEIGHT - 168))
-        self._text("small", "D Mode    C Whale    L Board", config.TEXT_COLOR,
-                   (cx, config.SCREEN_HEIGHT - 136))
+                   config.TEXT_ACCENT, (cx, config.SCREEN_HEIGHT - 172))
+        self._text("small", "D Mode   C Whale   S Shop   L Board", config.TEXT_COLOR,
+                   (cx, config.SCREEN_HEIGHT - 140))
+        self._text("small", f"{self.coins} coins", config.COIN_COLOR,
+                   (cx, config.SCREEN_HEIGHT - 108))
 
     def _draw_gameover(self) -> None:
         """Draw the game-over panel: score, best/entry, and either name entry
@@ -703,19 +781,7 @@ class Game:
 
     def _draw_leaderboard(self) -> None:
         """Draw the ranked top-scores panel with an eased slide-in."""
-        cx = config.SCREEN_WIDTH // 2
-        t = ease_out_cubic(clamp(self.state_time / 26.0, 0.0, 1.0))
-        panel_w, panel_h = 360, 540
-        target_y = config.SCREEN_HEIGHT // 2 - panel_h // 2
-        panel_y = int(lerp(-panel_h, target_y, t))
-
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        pygame.draw.rect(panel, (*config.PANEL_COLOR, 238), panel.get_rect(), border_radius=26)
-        pygame.draw.rect(panel, (*config.PANEL_BORDER, 255), panel.get_rect(), width=3, border_radius=26)
-        prect = panel.get_rect(center=(cx, config.SCREEN_HEIGHT // 2))
-        prect.y = panel_y
-        self.screen.blit(panel, prect)
-
+        prect = ui.slide_panel(self.screen, self.state_time, 360, 540)
         inner_cx = prect.centerx
         self._text("large", "Leaderboard", config.TEXT_ACCENT, (inner_cx, prect.top + 36))
         self._text("small", f"{self.run_mode.name} mode", config.TEXT_COLOR,
@@ -737,10 +803,8 @@ class Game:
                 is_me = (i + 1) == self.entry_rank
                 color = config.TEXT_ACCENT if is_me else config.TEXT_COLOR
                 if is_me:
-                    hl = pygame.Rect(left - 8, y - row_h // 2, right - left + 16, row_h - 6)
-                    hi = pygame.Surface(hl.size, pygame.SRCALPHA)
-                    hi.fill((*config.PANEL_BORDER, 46))
-                    self.screen.blit(hi, hl)
+                    ui.highlight_row(self.screen, pygame.Rect(
+                        left - 8, y - row_h // 2, right - left + 16, row_h - 6), radius=8)
                 self._text("medium", f"{i + 1}", color, (left + 12, y), shadow=False)
                 name_img = self.fonts["medium"].render(entry["name"], True, color)
                 self.screen.blit(name_img, name_img.get_rect(midleft=(left + 52, y)))
@@ -754,17 +818,7 @@ class Game:
 
     def _draw_modeselect(self) -> None:
         """Draw the mode-selection panel with per-mode bests and a cursor."""
-        cx = config.SCREEN_WIDTH // 2
-        t = ease_out_cubic(clamp(self.state_time / 26.0, 0.0, 1.0))
-        panel_w, panel_h = 380, 470
-        panel_y = int(lerp(-panel_h, config.SCREEN_HEIGHT // 2 - panel_h // 2, t))
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        pygame.draw.rect(panel, (*config.PANEL_COLOR, 238), panel.get_rect(), border_radius=26)
-        pygame.draw.rect(panel, (*config.PANEL_BORDER, 255), panel.get_rect(), width=3, border_radius=26)
-        prect = panel.get_rect(center=(cx, config.SCREEN_HEIGHT // 2))
-        prect.y = panel_y
-        self.screen.blit(panel, prect)
-
+        prect = ui.slide_panel(self.screen, self.state_time, 380, 470)
         inner_cx = prect.centerx
         self._text("large", "Select Mode", config.TEXT_ACCENT, (inner_cx, prect.top + 42))
 
@@ -777,11 +831,8 @@ class Game:
             selected = i == self.menu_index
             color = config.TEXT_ACCENT if selected else config.TEXT_COLOR
             if selected:
-                hl = pygame.Rect(left - 8, y - row_h // 2 + 6, right - left + 16, row_h - 12)
-                hi = pygame.Surface(hl.size, pygame.SRCALPHA)
-                hi.fill((*config.PANEL_BORDER, 52))
-                pygame.draw.rect(hi, (*config.PANEL_BORDER, 52), hi.get_rect(), border_radius=12)
-                self.screen.blit(hi, hl)
+                ui.highlight_row(self.screen, pygame.Rect(
+                    left - 8, y - row_h // 2 + 6, right - left + 16, row_h - 12))
             equipped = mode.id == self.profile["selected_mode"]
             name = ("* " if equipped else "") + mode.name
             name_img = self.fonts["medium"].render(name, True, color)
@@ -809,17 +860,7 @@ class Game:
 
     def _draw_charselect(self) -> None:
         """Draw the character carousel with previews, feel, and lock/cost."""
-        cx = config.SCREEN_WIDTH // 2
-        t = ease_out_cubic(clamp(self.state_time / 26.0, 0.0, 1.0))
-        panel_w, panel_h = 400, 500
-        panel_y = int(lerp(-panel_h, config.SCREEN_HEIGHT // 2 - panel_h // 2, t))
-        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        pygame.draw.rect(panel, (*config.PANEL_COLOR, 238), panel.get_rect(), border_radius=26)
-        pygame.draw.rect(panel, (*config.PANEL_BORDER, 255), panel.get_rect(), width=3, border_radius=26)
-        prect = panel.get_rect(center=(cx, config.SCREEN_HEIGHT // 2))
-        prect.y = panel_y
-        self.screen.blit(panel, prect)
-
+        prect = ui.slide_panel(self.screen, self.state_time, 400, 500)
         inner_cx = prect.centerx
         self._text("large", "Whales", config.TEXT_ACCENT, (inner_cx, prect.top + 40))
 
@@ -833,10 +874,8 @@ class Game:
             unlocked = spec.id in self.profile["unlocked"]
             color = config.TEXT_ACCENT if selected else config.TEXT_COLOR
             if selected:
-                hl = pygame.Rect(left - 6, y - row_h // 2 + 6, right - left + 12, row_h - 12)
-                hi = pygame.Surface(hl.size, pygame.SRCALPHA)
-                pygame.draw.rect(hi, (*config.PANEL_BORDER, 52), hi.get_rect(), border_radius=12)
-                self.screen.blit(hi, hl)
+                ui.highlight_row(self.screen, pygame.Rect(
+                    left - 6, y - row_h // 2 + 6, right - left + 12, row_h - 12))
             # Whale thumbnail (dimmed if locked).
             thumb = self._char_preview(spec)
             if not unlocked:
@@ -860,6 +899,44 @@ class Game:
             self.screen.blit(st_img, st_img.get_rect(midright=(right - 4, y - 14)))
 
         self._text("small", "Up/Down choose   ·   Enter select   ·   Esc back",
+                   config.TEXT_COLOR, (inner_cx, prect.bottom - 22))
+
+    def _draw_shop(self) -> None:
+        """Draw the shop: coin balance, buyable characters, and trails."""
+        prect = ui.slide_panel(self.screen, self.state_time, 400, 520)
+        inner_cx = prect.centerx
+        self._text("large", "Shop", config.TEXT_ACCENT, (inner_cx, prect.top + 38))
+        self._text("small", f"{self.coins} coins", config.COIN_COLOR,
+                   (inner_cx, prect.top + 72))
+
+        left = prect.left + 26
+        right = prect.right - 26
+        row_top = prect.top + 116
+        row_h = 46
+        for i, item in enumerate(self.shop_items):
+            y = row_top + i * row_h
+            selected = i == self.menu_index
+            color = config.TEXT_ACCENT if selected else config.TEXT_COLOR
+            if selected:
+                ui.highlight_row(self.screen, pygame.Rect(
+                    left - 8, y - row_h // 2 + 4, right - left + 16, row_h - 8))
+            equipped = (item["kind"] == "trail"
+                        and item["id"] == self.profile["selected_trail"])
+            name = ("* " if equipped else "") + item["name"]
+            name_img = self.fonts["medium"].render(name, True, color)
+            self.screen.blit(name_img, name_img.get_rect(midleft=(left + 4, y)))
+            # Right side: price to buy, or owned/equip state.
+            if item["kind"] == "trail" and item["owned"]:
+                status, scol = ("equipped" if equipped else "equip"), config.TEXT_COLOR
+            else:
+                status, scol = f"{item['cost']}", config.COIN_COLOR
+            st_img = self.fonts["small"].render(status, True, scol)
+            self.screen.blit(st_img, st_img.get_rect(midright=(right - 2, y)))
+
+        if not self.shop_items:
+            self._text("small", "Everything unlocked!", config.TEXT_COLOR,
+                       (inner_cx, prect.centery))
+        self._text("small", "Enter buy/equip   ·   Esc back",
                    config.TEXT_COLOR, (inner_cx, prect.bottom - 22))
 
     def _draw_flash(self) -> None:

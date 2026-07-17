@@ -111,6 +111,34 @@ class ScorePop:
         target.blit(img, rect)
 
 
+class TrailBit:
+    """A small coloured dot left behind the whale (cosmetic trail)."""
+
+    def __init__(self, x: float, y: float, color: tuple[int, int, int]) -> None:
+        self.x = x
+        self.y = y
+        self.color = color
+        self.age = 0
+        self.lifetime = config.TRAIL_LIFETIME
+
+    def update(self, dt: float = 1.0) -> bool:
+        # Drift gently back and up, like it is being left in the wake.
+        self.x -= 0.6 * dt
+        self.y -= 0.25 * dt
+        self.age += dt
+        return self.age < self.lifetime
+
+    def draw(self, target: pygame.Surface, offset: tuple[float, float]) -> None:
+        fade = 1.0 - (self.age / self.lifetime)
+        alpha = int(clamp_alpha(200 * fade))
+        if alpha <= 0:
+            return
+        r = max(1, int(5 * fade))
+        surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(surf, (*self.color, alpha), (r + 1, r + 1), r)
+        target.blit(surf, (self.x - r + offset[0], self.y - r + offset[1]))
+
+
 def clamp_alpha(value: float) -> float:
     """Clamp an alpha value into the valid 0..255 range."""
     return max(0.0, min(255.0, value))
@@ -124,6 +152,7 @@ class ParticleSystem:
         self.bubbles: list[Bubble] = []
         self.splashes: list[Splash] = []
         self.score_pops: list[ScorePop] = []
+        self.trail_bits: list[TrailBit] = []
 
     # ------------------------------------------------------------------ #
     # Emitters
@@ -162,6 +191,10 @@ class ParticleSystem:
         """Emit a rising ``text`` (defaults to '+1') at ``(x, y)``."""
         self.score_pops.append(ScorePop(x, y, text))
 
+    def emit_trail(self, x: float, y: float, color: tuple[int, int, int]) -> None:
+        """Emit one cosmetic trail bit at ``(x, y)``."""
+        self.trail_bits.append(TrailBit(x, y, color))
+
     # ------------------------------------------------------------------ #
     # Update / draw
     # ------------------------------------------------------------------ #
@@ -172,6 +205,7 @@ class ParticleSystem:
         self.bubbles = [b for b in self.bubbles if b.update(dt)]
         self.splashes = [s for s in self.splashes if s.update(dt)]
         self.score_pops = [p for p in self.score_pops if p.update(dt)]
+        self.trail_bits = [t for t in self.trail_bits if t.update(dt)]
 
     def draw(
         self,
@@ -180,6 +214,8 @@ class ParticleSystem:
         offset: tuple[float, float] = (0.0, 0.0),
     ) -> None:
         """Draw all particles. ``pop_font`` is needed for score pops."""
+        for trail in self.trail_bits:
+            trail.draw(target, offset)
         for bubble in self.bubbles:
             bubble.draw(target, offset)
         for splash in self.splashes:
@@ -193,8 +229,10 @@ class ParticleSystem:
         self.bubbles.clear()
         self.splashes.clear()
         self.score_pops.clear()
+        self.trail_bits.clear()
 
     @property
     def count(self) -> int:
         """Total live particle count (handy for tests/debugging)."""
-        return len(self.bubbles) + len(self.splashes) + len(self.score_pops)
+        return (len(self.bubbles) + len(self.splashes)
+                + len(self.score_pops) + len(self.trail_bits))
