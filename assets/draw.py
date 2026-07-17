@@ -111,6 +111,67 @@ def build_coin(radius: int) -> pygame.Surface:
     return surf
 
 
+_jellyfish_cache: dict[int, pygame.Surface] = {}
+_mine_cache: dict[int, pygame.Surface] = {}
+
+
+def build_jellyfish(radius: int) -> pygame.Surface:
+    """Build (and cache) a translucent jellyfish: soft dome + wavy tentacles."""
+    cached = _jellyfish_cache.get(radius)
+    if cached is not None:
+        return cached
+    w = radius * 2 + 6
+    h = radius * 3 + 8
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    cx = w // 2
+    dome_cy = radius + 3
+    # Tentacles first (behind the dome).
+    for i in range(5):
+        tx = cx - radius + 3 + i * (radius // 2)
+        pts = []
+        for s in range(6):
+            t = s / 5
+            px = tx + math.sin(t * math.pi * 2 + i) * 4
+            py = dome_cy + int(t * (radius * 1.7))
+            pts.append((px, py))
+        pygame.draw.lines(surf, (*config.JELLYFISH_DARK, 150), False, pts, 2)
+    # Dome (two layers for translucency).
+    pygame.draw.ellipse(surf, (*config.JELLYFISH_COLOR, 150),
+                        (cx - radius, dome_cy - radius, radius * 2, int(radius * 1.7)))
+    pygame.draw.ellipse(surf, (*config.JELLYFISH_COLOR, 210),
+                        (cx - radius + 3, dome_cy - radius + 2, radius * 2 - 6, radius))
+    pygame.draw.ellipse(surf, (255, 255, 255, 120),
+                        (cx - radius // 2, dome_cy - radius + 3, radius, radius // 2))
+    _jellyfish_cache[radius] = surf
+    return surf
+
+
+def build_mine(radius: int) -> pygame.Surface:
+    """Build (and cache) a spiky sea mine with a warning light."""
+    cached = _mine_cache.get(radius)
+    if cached is not None:
+        return cached
+    size = radius * 3
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    c = size // 2
+    # Spikes.
+    for i in range(8):
+        ang = i / 8 * math.tau
+        x1 = c + math.cos(ang) * radius
+        y1 = c + math.sin(ang) * radius
+        x2 = c + math.cos(ang) * (radius + radius * 0.5)
+        y2 = c + math.sin(ang) * (radius + radius * 0.5)
+        pygame.draw.line(surf, config.MINE_SPIKE, (x1, y1), (x2, y2), 4)
+        pygame.draw.circle(surf, config.MINE_SPIKE, (int(x2), int(y2)), 3)
+    pygame.draw.circle(surf, config.MINE_SPIKE, (c, c), radius + 1)
+    pygame.draw.circle(surf, config.MINE_COLOR, (c, c), radius)
+    pygame.draw.circle(surf, lerp_color(config.MINE_COLOR, (255, 255, 255), 0.25),
+                       (c - radius // 3, c - radius // 3), max(2, radius // 3))
+    pygame.draw.circle(surf, config.MINE_LIGHT, (c, c), max(2, radius // 4))
+    _mine_cache[radius] = surf
+    return surf
+
+
 _powerup_cache: dict[str, pygame.Surface] = {}
 
 

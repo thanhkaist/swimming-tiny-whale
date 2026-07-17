@@ -23,6 +23,7 @@ import trails
 import ui
 from audio import Audio
 from collectibles import CollectibleField
+from hazards import HazardField
 from obstacles import ObstacleField
 from particles import ParticleSystem
 from scene import Scene
@@ -45,6 +46,7 @@ class Game:
         self.scene = Scene()
         self.field = ObstacleField(self.rng)
         self.collectibles = CollectibleField(self.rng)
+        self.hazards = HazardField(self.rng)
         self.particles = ParticleSystem(self.rng)
         self.effects = powerups.EffectManager()
         self._iframes = 0.0           # invulnerability frames after a shield pop
@@ -147,11 +149,14 @@ class Game:
             base = modes.today_seed()
             run_rng = random.Random(base)
             coin_rng = random.Random(base + 1)
+            hazard_rng = random.Random(base + 2)
         else:
             run_rng = random.Random()
             coin_rng = random.Random()
+            hazard_rng = random.Random()
         self.field = ObstacleField(run_rng, mode=self.run_mode)
         self.collectibles = CollectibleField(coin_rng, mode=self.run_mode)
+        self.hazards = HazardField(hazard_rng, mode=self.run_mode)
 
         # Rebuild the whale so the run always matches the selected character.
         self.whale = Whale(spec=characters.by_id(self.profile["selected_character"]))
@@ -502,9 +507,14 @@ class Game:
             self.audio.play("score")
             self.flash = config.LOCKED_FLASH_ALPHA
 
+        hazard_hit = self.hazards.update(
+            speed, self.whale, gameplay_dt, effects=self.effects, score=self.score)
+
         self.particles.update(gameplay_dt)
 
-        if self._iframes <= 0 and (self.field.collides(self.whale.rect) or self.whale.hits_bounds()):
+        lethal = (self.field.collides(self.whale.rect) or self.whale.hits_bounds()
+                  or hazard_hit == "hit")
+        if self._iframes <= 0 and lethal:
             self._resolve_collision()
 
     def _emit_trail(self, dt: float) -> None:
@@ -608,6 +618,7 @@ class Game:
         self.scene.draw(self.screen, offset)
         self.field.draw(self.screen, offset)
         self.collectibles.draw(self.screen, offset)
+        self.hazards.draw(self.screen, offset)
 
         # The whale hides during the fully-black part of a title→play fade-in.
         self.whale.draw(self.screen, offset)

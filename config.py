@@ -77,6 +77,33 @@ OBSTACLE_EDGE_MARGIN: int = 70
 # First obstacle appears this far to the right of the screen edge.
 OBSTACLE_FIRST_OFFSET: int = 120
 
+# Oscillating (vertically moving) columns start appearing once the score is
+# high enough, and only some columns move.
+OSCILLATING_COLUMN_MIN_SCORE: int = 8
+OSC_COLUMN_CHANCE: float = 0.4       # Fraction of eligible columns that move.
+OSC_AMP_MAX: float = 74.0            # Max vertical travel of a moving gap.
+OSC_SPEED: float = 0.05             # Oscillation phase speed.
+
+# --------------------------------------------------------------------------- #
+# Hazards (jellyfish, mines, current zones) — appear beyond a score threshold
+# --------------------------------------------------------------------------- #
+HAZARD_MIN_SCORE: int = 6
+HAZARD_SPAWN_INTERVAL: float = 210.0
+HAZARD_SPAWN_JITTER: float = 0.4
+JELLYFISH_RADIUS: int = 16
+JELLYFISH_BOB_AMP: float = 34.0
+JELLYFISH_BOB_SPEED: float = 0.03
+MINE_RADIUS: int = 15
+CURRENT_WIDTH: int = 92
+CURRENT_HEIGHT: int = 168
+CURRENT_PUSH: float = 0.4            # Vertical push per frame while inside.
+JELLYFISH_COLOR: tuple[int, int, int] = (214, 150, 232)
+JELLYFISH_DARK: tuple[int, int, int] = (150, 92, 178)
+MINE_COLOR: tuple[int, int, int] = (58, 66, 78)
+MINE_SPIKE: tuple[int, int, int] = (34, 40, 50)
+MINE_LIGHT: tuple[int, int, int] = (232, 96, 84)
+CURRENT_COLOR: tuple[int, int, int] = (150, 226, 236)
+
 # --------------------------------------------------------------------------- #
 # Game-mode difficulty multipliers (applied on top of the base curve)
 # --------------------------------------------------------------------------- #

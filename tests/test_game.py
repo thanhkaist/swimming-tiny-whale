@@ -343,6 +343,36 @@ def test_shield_absorbs_one_hit(temp_storage) -> None:  # noqa: ANN001
     assert game._iframes > 0
 
 
+def test_hazard_hit_ends_run(temp_storage) -> None:  # noqa: ANN001
+    from hazards import Mine
+
+    game = Game()
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.score = 3
+    game.whale.y = 300
+    game.hazards.hazards = [Mine(game.whale.x, 300)]
+    game.update(dt=1.0)
+    assert game.state == config.STATE_GAMEOVER
+
+
+def test_shield_absorbs_hazard(temp_storage) -> None:  # noqa: ANN001
+    import powerups
+    from hazards import Mine
+
+    game = Game()
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.effects.activate(powerups.SHIELD)
+    game.whale.y = 300
+    game.hazards.hazards = [Mine(game.whale.x, 300)]
+    game.update(dt=1.0)
+    assert game.state == config.STATE_PLAYING     # survived
+    assert not game.effects.shield                # shield spent
+
+
 def test_shrink_powerup_reduces_hitbox_during_play(temp_storage) -> None:  # noqa: ANN001
     import powerups
 

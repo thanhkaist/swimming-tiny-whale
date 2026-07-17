@@ -8,6 +8,7 @@ tightens and the scroll speed increases, both clamped to sane limits.
 
 from __future__ import annotations
 
+import math
 import random
 
 import pygame
@@ -20,7 +21,17 @@ from util import clamp
 class Obstacle:
     """A single top+bottom coral column pair with a gap between them."""
 
-    def __init__(self, x: float, gap_center: float, gap_size: float, seed: int) -> None:
+    def __init__(
+        self,
+        x: float,
+        gap_center: float,
+        gap_size: float,
+        seed: int,
+        kind: str = "static",
+        osc_amp: float = 0.0,
+        osc_speed: float = 0.0,
+        osc_phase: float = 0.0,
+    ) -> None:
         """Create a column pair.
 
         Args:
@@ -28,6 +39,10 @@ class Obstacle:
             gap_center: Y-coordinate of the middle of the gap.
             gap_size: Vertical height of the passable gap.
             seed: Deterministic seed for this column's procedural art.
+            kind: "static" or "moving".
+            osc_amp: Vertical oscillation amplitude (0 → static, default).
+            osc_speed: Oscillation phase speed.
+            osc_phase: Initial oscillation phase.
         """
         self.x: float = float(x)
         self.gap_center: float = float(gap_center)
@@ -35,6 +50,15 @@ class Obstacle:
         self.width: int = config.OBSTACLE_WIDTH
         self.seed: int = seed
         self.passed: bool = False
+
+        # Vertical oscillation (a moving column). ``base_center`` is the axis;
+        # ``gap_center`` is the live (possibly oscillated) value everything else
+        # reads, so collision/scoring/art need no changes.
+        self.kind: str = kind
+        self.base_center: float = float(gap_center)
+        self.osc_amp: float = float(osc_amp)
+        self.osc_speed: float = float(osc_speed)
+        self._osc_phase: float = float(osc_phase)
 
         # Lazily built art (top column hangs down, bottom column grows up).
         self._top_surface: pygame.Surface | None = None
@@ -80,8 +104,11 @@ class Obstacle:
         return self.x + self.width / 2
 
     def update(self, speed: float, dt: float = 1.0) -> None:
-        """Scroll left by ``speed`` px per reference-frame."""
+        """Scroll left, and (for moving columns) oscillate the gap vertically."""
         self.x -= speed * dt
+        if self.osc_amp:
+            self._osc_phase += self.osc_speed * dt
+            self.gap_center = self.base_center + math.sin(self._osc_phase) * self.osc_amp
 
     def is_offscreen(self) -> bool:
         """True once the column has fully scrolled past the left edge."""
@@ -153,11 +180,34 @@ class ObstacleField:
         return self._rng.uniform(lo, hi)
 
     def _make_obstacle(self, x: float, score: int) -> Obstacle:
-        """Construct one obstacle appropriate to the current ``score``/mode."""
+        """Construct one obstacle appropriate to the current ``score``/mode.
+
+        Past a score threshold some columns oscillate vertically; the amplitude
+        is capped by the remaining headroom so the gap always stays within the
+        playable band.
+        """
         gap_size = self.gap_for_score(score, self.mode)
         gap_center = self._random_gap_center(gap_size)
         self._seed_counter += 1
-        return Obstacle(x, gap_center, gap_size, seed=self._seed_counter)
+
+        kind, amp = "static", 0.0
+        if (score >= config.OSCILLATING_COLUMN_MIN_SCORE
+                and self._rng.random() < config.OSC_COLUMN_CHANCE):
+            margin = config.OBSTACLE_EDGE_MARGIN
+            up_room = gap_center - (config.WATER_SURFACE_Y + margin + gap_size / 2)
+            down_room = (config.SEABED_Y - margin - gap_size / 2) - gap_center
+            headroom = max(0.0, min(up_room, down_room))
+            amp = min(config.OSC_AMP_MAX, headroom)
+            if amp >= 8.0:  # only bother if the motion is noticeable
+                kind = "moving"
+            else:
+                amp = 0.0
+
+        return Obstacle(
+            x, gap_center, gap_size, seed=self._seed_counter,
+            kind=kind, osc_amp=amp, osc_speed=config.OSC_SPEED,
+            osc_phase=self._rng.uniform(0.0, math.tau),
+        )
 
     @property
     def _spacing(self) -> float:
