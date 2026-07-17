@@ -1,8 +1,9 @@
 # Progress — Swimming Tiny Whale
 
-Built autonomously in one session. Status: **complete, playable, polished, and
-tested.** All 51 tests pass; the game runs cleanly headless and at ~3 ms/frame
-(comfortably under the 16.6 ms 60-FPS budget).
+Built autonomously in one session, then extended with a leaderboard. Status:
+**complete, playable, polished, and tested.** All 73 tests pass; the game runs
+cleanly headless and at ~3 ms/frame (comfortably under the 16.6 ms 60-FPS
+budget).
 
 ## What got built (in order)
 
@@ -44,6 +45,32 @@ tested.** All 51 tests pass; the game runs cleanly headless and at ~3 ms/frame
   silhouettes are varied but reproducible and cacheable — no per-frame rebuilds.
 - **Added `util.py` and `storage.py`** beyond the CLAUDE.md module list to keep
   math helpers and persistence cleanly separated and independently testable.
+
+## Leaderboard feature (added after the initial build)
+
+A local top-10 leaderboard with classic arcade initials entry.
+
+- **Storage** (`storage.py`) — `load_leaderboard` / `save_leaderboard` /
+  `qualifies` / `add_score`, stored in `leaderboard.json`. Sorted descending,
+  trimmed to 10, tolerant of corrupt/malformed/non-positive entries, and names
+  sanitised (uppercase, alnum, clamped to 3). `add_score` returns the new
+  board plus the 1-based rank achieved (-1 if it didn't place); ties place the
+  newer entry below the incumbent.
+- **Flow** — on a qualifying death the game-over panel switches to an inline
+  3-slot initials entry (type A–Z/0–9, Backspace, Enter). Submitting saves the
+  score and shows the achieved rank. A dedicated `STATE_LEADERBOARD` screen is
+  reachable via **L** from both the title and game-over; it slides in, lists
+  the board, and highlights the row you just set. Returns to whichever screen
+  opened it.
+- **Decisions made:** kept the leaderboard in its own file (didn't disturb the
+  existing single high-score API/tests); chose 3-letter arcade initials over
+  free-text names (robust, on-theme, no text-wrapping/IME concerns); auto-`AAA`
+  fallback for an empty entry; clicks don't confirm initials (avoids accidental
+  submits). The `#1` high score and the leaderboard are tracked independently
+  but stay consistent in normal play.
+- **Tests** — 15 storage tests + 7 game-flow integration tests (name-entry
+  activation, typing/backspace/cap/submit, no-restart-while-typing, open/leave
+  from title and game-over).
 
 ## What I'd polish next
 

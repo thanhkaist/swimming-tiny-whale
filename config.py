@@ -191,6 +191,10 @@ FONT_SIZE_SMALL: int = 20
 # Persistence
 # --------------------------------------------------------------------------- #
 HIGHSCORE_FILE: str = "highscore.json"
+LEADERBOARD_FILE: str = "leaderboard.json"
+LEADERBOARD_SIZE: int = 10          # How many top scores to keep.
+INITIALS_LENGTH: int = 3            # Arcade-style 3-letter name entry.
+DEFAULT_INITIALS: str = "AAA"       # Pre-filled entry / fallback name.
 
 # --------------------------------------------------------------------------- #
 # Game states
@@ -198,3 +202,4 @@ HIGHSCORE_FILE: str = "highscore.json"
 STATE_TITLE: str = "title"
 STATE_PLAYING: str = "playing"
 STATE_GAMEOVER: str = "gameover"
+STATE_LEADERBOARD: str = "leaderboard"

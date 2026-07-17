@@ -20,7 +20,7 @@ from audio import Audio
 from obstacles import ObstacleField
 from particles import ParticleSystem
 from scene import Scene
-from util import clamp, ease_out_cubic
+from util import clamp, ease_out_cubic, lerp
 from whale import Whale
 
 
@@ -47,6 +47,13 @@ class Game:
         self.score = 0
         self.highscore = storage.load_highscore()
         self.new_best = False
+
+        # Leaderboard + arcade-style name entry.
+        self.leaderboard = storage.load_leaderboard()
+        self.name_entry_active = False       # typing initials on the panel?
+        self.entry_initials = ""             # initials typed so far
+        self.entry_rank = -1                 # 1-based rank just achieved (-1 none)
+        self.leaderboard_return = config.STATE_TITLE  # where to go back to
 
         # Juice / transition state.
         self.shake = 0.0
@@ -128,14 +135,79 @@ class Game:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
-                if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
-                    self._swim()
-                elif event.key == pygame.K_m:
-                    self.audio.toggle()
-                elif event.key == pygame.K_ESCAPE:
-                    self.running = False
+                self._on_keydown(event)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self._swim()
+                self._on_click()
+
+    def _on_keydown(self, event: pygame.event.Event) -> None:
+        """Route a key press based on the current state/sub-mode."""
+        # While typing initials, keys go to the name-entry handler exclusively.
+        if self.name_entry_active:
+            self._handle_name_key(event)
+            return
+
+        if event.key == pygame.K_m:
+            self.audio.toggle()
+            return
+
+        # In the leaderboard view, any key returns to where we came from.
+        if self.state == config.STATE_LEADERBOARD:
+            self._leave_leaderboard()
+            return
+
+        if event.key == pygame.K_l:
+            self._open_leaderboard()
+            return
+        if event.key == pygame.K_ESCAPE:
+            self.running = False
+            return
+        if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
+            self._swim()
+
+    def _on_click(self) -> None:
+        """Route a left-click based on the current state/sub-mode."""
+        if self.name_entry_active:
+            return  # clicks don't confirm initials (avoid accidental submits)
+        if self.state == config.STATE_LEADERBOARD:
+            self._leave_leaderboard()
+            return
+        self._swim()
+
+    # ------------------------------------------------------------------ #
+    # Leaderboard + name entry
+    # ------------------------------------------------------------------ #
+    def _open_leaderboard(self) -> None:
+        """Show the leaderboard, remembering where to return afterwards."""
+        if self._pending_state is not None:
+            return
+        self.leaderboard = storage.load_leaderboard()
+        self.leaderboard_return = self.state
+        if self.state == config.STATE_TITLE:
+            self.entry_rank = -1  # no fresh entry to highlight
+        self._begin_transition(config.STATE_LEADERBOARD)
+
+    def _leave_leaderboard(self) -> None:
+        """Return from the leaderboard to whichever screen opened it."""
+        if self._pending_state is not None:
+            return
+        self._begin_transition(self.leaderboard_return or config.STATE_TITLE)
+
+    def _handle_name_key(self, event: pygame.event.Event) -> None:
+        """Type / erase / confirm the arcade initials on the game-over panel."""
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self._submit_name()
+        elif event.key == pygame.K_BACKSPACE:
+            self.entry_initials = self.entry_initials[:-1]
+        else:
+            ch = getattr(event, "unicode", "").upper()
+            if ch.isalnum() and len(self.entry_initials) < config.INITIALS_LENGTH:
+                self.entry_initials += ch
+
+    def _submit_name(self) -> None:
+        """Persist the entered initials to the leaderboard and stop editing."""
+        name = self.entry_initials or config.DEFAULT_INITIALS
+        self.leaderboard, self.entry_rank = storage.add_score(name, self.score)
+        self.name_entry_active = False
 
     # ------------------------------------------------------------------ #
     # Update
@@ -153,6 +225,8 @@ class Game:
             self._update_playing(dt)
         elif self.state == config.STATE_GAMEOVER:
             self._update_gameover(dt)
+        elif self.state == config.STATE_LEADERBOARD:
+            self._update_leaderboard(dt)
 
     def _update_transition(self) -> None:
         """Drive the black-fade cross between states."""
@@ -176,6 +250,11 @@ class Game:
 
     def _update_title(self, dt: float) -> None:
         """Idle the whale bobbing on the title screen."""
+        self.whale.idle_bob(config.WHALE_START_Y, dt)
+        self.particles.update(dt)
+
+    def _update_leaderboard(self, dt: float) -> None:
+        """Keep the scene alive while viewing the leaderboard."""
         self.whale.idle_bob(config.WHALE_START_Y, dt)
         self.particles.update(dt)
 
@@ -220,6 +299,11 @@ class Game:
             self.new_best = True
             storage.save_highscore(self.highscore)
 
+        # If the run earns a leaderboard slot, start arcade initials entry.
+        self.entry_rank = -1
+        self.entry_initials = ""
+        self.name_entry_active = storage.qualifies(self.score)
+
         self.state = config.STATE_GAMEOVER
         self.state_time = 0.0
 
@@ -254,6 +338,8 @@ class Game:
         elif self.state == config.STATE_GAMEOVER:
             self._draw_hud()
             self._draw_gameover()
+        elif self.state == config.STATE_LEADERBOARD:
+            self._draw_leaderboard()
 
         self._draw_flash()
         self._draw_fade()
@@ -320,13 +406,16 @@ class Game:
 
         self._text("small", f"Best: {self.highscore}", config.TEXT_ACCENT,
                    (cx, config.SCREEN_HEIGHT - 160))
+        self._text("small", "L  ·  Leaderboard", config.TEXT_COLOR,
+                   (cx, config.SCREEN_HEIGHT - 128))
 
     def _draw_gameover(self) -> None:
-        """Draw the game-over panel with an eased slide-in."""
+        """Draw the game-over panel: score, best/entry, and either name entry
+        or the play-again / leaderboard prompts."""
         cx = config.SCREEN_WIDTH // 2
         # Ease the panel down into place over ~0.5s.
         t = ease_out_cubic(clamp(self.state_time / 30.0, 0.0, 1.0))
-        panel_w, panel_h = 320, 220
+        panel_w, panel_h = 320, 248
         panel_y = int(-panel_h + (config.SCREEN_HEIGHT // 2 - panel_h // 2 + panel_h) * t)
         panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         pygame.draw.rect(panel, (*config.PANEL_COLOR, 235), panel.get_rect(), border_radius=24)
@@ -336,20 +425,59 @@ class Game:
         self.screen.blit(panel, prect)
 
         inner_cx = prect.centerx
-        self._text("large", "Game Over", config.TEXT_COLOR, (inner_cx, prect.top + 44))
-        self._text("medium", f"Score  {self.score}", config.TEXT_COLOR, (inner_cx, prect.top + 100))
-        best_label = "New Best!  " + str(self.highscore) if self.new_best else f"Best  {self.highscore}"
-        best_color = config.TEXT_ACCENT if self.new_best else config.TEXT_COLOR
-        best_rect = self._text("medium", best_label, best_color, (inner_cx, prect.top + 138))
-        if self.new_best:
-            self._draw_new_best_sparkles(best_rect)
+        self._text("large", "Game Over", config.TEXT_COLOR, (inner_cx, prect.top + 40))
+        self._text("medium", f"Score  {self.score}", config.TEXT_COLOR, (inner_cx, prect.top + 92))
+
+        if self.name_entry_active:
+            self._draw_name_entry(prect)
+            return
+
+        # Post-entry / non-qualifying: show best or achieved rank, then prompts.
+        if self.entry_rank > 0:
+            label = "New High Score!" if self.new_best else f"Ranked #{self.entry_rank}!"
+            rect = self._text("medium", label, config.TEXT_ACCENT, (inner_cx, prect.top + 132))
+            self._draw_new_best_sparkles(rect)
+        else:
+            best_label = f"Best  {self.highscore}"
+            self._text("medium", best_label, config.TEXT_COLOR, (inner_cx, prect.top + 132))
 
         if self.state_time > 20:
             pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.09)
             prompt = self.fonts["small"].render("Tap / Space to play again", True, config.TEXT_COLOR)
             prompt.set_alpha(int(120 + 135 * pulse))
-            rect = prompt.get_rect(center=(inner_cx, prect.bottom - 26))
-            self.screen.blit(prompt, rect)
+            self.screen.blit(prompt, prompt.get_rect(center=(inner_cx, prect.bottom - 46)))
+            self._text("small", "L  ·  Leaderboard", config.TEXT_ACCENT,
+                       (inner_cx, prect.bottom - 22))
+
+    def _draw_name_entry(self, prect: pygame.Rect) -> None:
+        """Draw the arcade initials-entry UI inside the game-over panel."""
+        inner_cx = prect.centerx
+        heading = "New High Score!" if self.new_best else "You made the board!"
+        self._text("small", heading, config.TEXT_ACCENT, (inner_cx, prect.top + 128))
+
+        # Three character slots; the active slot blinks with a caret.
+        slots = config.INITIALS_LENGTH
+        box_w, box_h, gap = 46, 54, 12
+        total = slots * box_w + (slots - 1) * gap
+        start_x = inner_cx - total // 2
+        top = prect.top + 148
+        blink = (int(self.state_time / 16) % 2) == 0
+        for i in range(slots):
+            bx = start_x + i * (box_w + gap)
+            rect = pygame.Rect(bx, top, box_w, box_h)
+            active = i == len(self.entry_initials)
+            border = config.TEXT_ACCENT if active else config.PANEL_BORDER
+            pygame.draw.rect(self.screen, (10, 40, 56), rect, border_radius=10)
+            pygame.draw.rect(self.screen, border, rect, width=3, border_radius=10)
+            ch = self.entry_initials[i] if i < len(self.entry_initials) else ""
+            if ch:
+                self._text("large", ch, config.TEXT_COLOR, rect.center, shadow=False)
+            elif active and blink:
+                self._text("large", "_", config.TEXT_ACCENT, (rect.centerx, rect.centery + 6),
+                           shadow=False)
+
+        self._text("small", "Type A–Z / 0–9  ·  Enter to save",
+                   config.TEXT_COLOR, (inner_cx, prect.bottom - 24))
 
     def _draw_new_best_sparkles(self, around: pygame.Rect) -> None:
         """Draw twinkling 4-point sparkles flanking the 'New Best!' label."""
@@ -373,6 +501,55 @@ class Game:
             pygame.draw.line(spark, color, (c - size * 0.5, c + size * 0.5),
                              (c + size * 0.5, c - size * 0.5), 1)
             self.screen.blit(spark, spark.get_rect(center=(sx, sy)))
+
+    def _draw_leaderboard(self) -> None:
+        """Draw the ranked top-scores panel with an eased slide-in."""
+        cx = config.SCREEN_WIDTH // 2
+        t = ease_out_cubic(clamp(self.state_time / 26.0, 0.0, 1.0))
+        panel_w, panel_h = 360, 540
+        target_y = config.SCREEN_HEIGHT // 2 - panel_h // 2
+        panel_y = int(lerp(-panel_h, target_y, t))
+
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (*config.PANEL_COLOR, 238), panel.get_rect(), border_radius=26)
+        pygame.draw.rect(panel, (*config.PANEL_BORDER, 255), panel.get_rect(), width=3, border_radius=26)
+        prect = panel.get_rect(center=(cx, config.SCREEN_HEIGHT // 2))
+        prect.y = panel_y
+        self.screen.blit(panel, prect)
+
+        inner_cx = prect.centerx
+        self._text("large", "Leaderboard", config.TEXT_ACCENT, (inner_cx, prect.top + 40))
+
+        left = prect.left + 30
+        right = prect.right - 30
+        row_top = prect.top + 86
+        row_h = 40
+
+        if not self.leaderboard:
+            self._text("small", "No scores yet —", config.TEXT_COLOR,
+                       (inner_cx, prect.top + 200))
+            self._text("small", "be the first!", config.TEXT_COLOR,
+                       (inner_cx, prect.top + 228))
+        else:
+            for i, entry in enumerate(self.leaderboard):
+                y = row_top + i * row_h
+                is_me = (i + 1) == self.entry_rank
+                color = config.TEXT_ACCENT if is_me else config.TEXT_COLOR
+                if is_me:
+                    hl = pygame.Rect(left - 8, y - row_h // 2, right - left + 16, row_h - 6)
+                    hi = pygame.Surface(hl.size, pygame.SRCALPHA)
+                    hi.fill((*config.PANEL_BORDER, 46))
+                    self.screen.blit(hi, hl)
+                self._text("medium", f"{i + 1}", color, (left + 12, y), shadow=False)
+                name_img = self.fonts["medium"].render(entry["name"], True, color)
+                self.screen.blit(name_img, name_img.get_rect(midleft=(left + 52, y)))
+                score_img = self.fonts["medium"].render(str(entry["score"]), True, color)
+                self.screen.blit(score_img, score_img.get_rect(midright=(right - 6, y)))
+
+        pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.09)
+        back = self.fonts["small"].render("Tap / Space to return", True, config.TEXT_COLOR)
+        back.set_alpha(int(120 + 135 * pulse))
+        self.screen.blit(back, back.get_rect(center=(inner_cx, prect.bottom - 26)))
 
     def _draw_flash(self) -> None:
         """White impact flash overlay."""

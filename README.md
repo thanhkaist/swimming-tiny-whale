@@ -22,18 +22,23 @@ core mechanics run headlessly for testing.
   white flash, a satisfying score "+1" pop, and smooth cross-fades between
   screens.
 - 🏆 **Persistent high score** saved to a local file.
+- 📋 **Local leaderboard** — a top-10 board with classic arcade 3-letter
+  initials entry when you place. View it any time from the title (**L**); your
+  fresh entry is highlighted. Saved to `leaderboard.json`.
 - 🔊 **Optional sound** — swim / score / hit blips are synthesised at runtime
   (no audio files) and degrade gracefully to silent if there's no audio device.
 - 🎯 **60 FPS**, frame-rate-independent physics.
 
 ## Controls
 
-| Action            | Keys / Mouse                     |
-|-------------------|----------------------------------|
-| Swim up           | **Space**, **↑**, **W**, or click |
-| Start / restart   | Same swim input                  |
-| Mute / unmute     | **M**                            |
-| Quit              | **Esc**                          |
+| Action                    | Keys / Mouse                     |
+|---------------------------|----------------------------------|
+| Swim up                   | **Space**, **↑**, **W**, or click |
+| Start / restart           | Same swim input                  |
+| View leaderboard          | **L** (from title or game-over)  |
+| Enter initials (on board) | Type **A–Z / 0–9**, **Enter** to save, **Backspace** to fix |
+| Mute / unmute             | **M**                            |
+| Quit                      | **Esc**                          |
 
 The whale sinks constantly under gentle gravity — tap to give it an upward swim
 impulse and thread the coral gaps. Hitting a column, the water surface, or the
@@ -87,7 +92,7 @@ obstacles.py  # coral/seaweed columns: spawning, scrolling, scoring, collision
 particles.py  # bubbles, swim spout, impact splash, score pop
 scene.py      # background: gradient, god-rays, parallax layers, vignette
 audio.py      # synthesised, gracefully-degrading sound effects
-storage.py    # local high-score persistence
+storage.py    # local high-score + leaderboard persistence
 util.py       # small math helpers (clamp, lerp, easing)
 config.py     # every tunable constant (physics, colours, sizes, feel)
 assets/draw.py# procedural art (whale sprite, coral columns, god-rays, vignette)
