@@ -106,7 +106,7 @@ SCORE_POP_RISE: float = 1.1
 # --------------------------------------------------------------------------- #
 GODRAY_COUNT: int = 5
 GODRAY_SPEED: float = 0.0016        # Sway speed of the light shafts.
-GODRAY_MAX_ALPHA: int = 26
+GODRAY_MAX_ALPHA: int = 42
 
 PLANKTON_COUNT: int = 46            # Drifting specks in the mid layer.
 PLANKTON_DRIFT_SPEED: float = 0.25

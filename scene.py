@@ -121,14 +121,25 @@ class Scene:
             config.SCREEN_WIDTH, config.SCREEN_HEIGHT,
             config.GRADIENT_TOP, config.GRADIENT_BOTTOM,
         )
-        self._godray_surf = pygame.Surface(
-            (config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.SRCALPHA
+        ray_len = config.SEABED_Y - config.WATER_SURFACE_Y
+        self._godray_sprite = art.build_godray(
+            ray_len, top_w=22, bottom_w=64,
+            color=config.GODRAY_COLOR, max_alpha=config.GODRAY_MAX_ALPHA,
         )
 
         self.plankton = [_Plankton(self._rng) for _ in range(config.PLANKTON_COUNT)]
         self.fish = [_FarFish(self._rng) for _ in range(config.FAR_FISH_COUNT)]
         self.kelp = [_Kelp(self._rng) for _ in range(config.PARALLAX_KELP_COUNT)]
-        self._godray_phases = [self._rng.uniform(0, math.tau) for _ in range(config.GODRAY_COUNT)]
+        # Each ray gets a base x, a sway phase, and a slight tilt for variety.
+        self._godrays = [
+            {
+                "base_x": (i + 0.5) / config.GODRAY_COUNT * config.SCREEN_WIDTH,
+                "phase": self._rng.uniform(0, math.tau),
+                "tilt": self._rng.uniform(-8, 8),
+                "speed": self._rng.uniform(0.8, 1.3),
+            }
+            for i in range(config.GODRAY_COUNT)
+        ]
 
     # ------------------------------------------------------------------ #
     # Update
@@ -159,23 +170,21 @@ class Scene:
         self._draw_seabed(target, offset)
 
     def _draw_godrays(self, target: pygame.Surface) -> None:
-        """Draw soft, slowly swaying light shafts from the surface."""
-        self._godray_surf.fill((0, 0, 0, 0))
-        for i, base_phase in enumerate(self._godray_phases):
-            phase = base_phase + self.time * config.GODRAY_SPEED * (1 + i * 0.1)
-            sway = math.sin(phase) * 60
-            top_x = (i + 0.5) / config.GODRAY_COUNT * config.SCREEN_WIDTH + sway
-            width = 70 + math.sin(phase * 1.3) * 20
-            alpha = int(config.GODRAY_MAX_ALPHA * (0.6 + 0.4 * math.sin(phase * 0.7)))
-            alpha = int(clamp(alpha, 0, 255))
-            points = [
-                (top_x - width * 0.25, config.WATER_SURFACE_Y),
-                (top_x + width * 0.25, config.WATER_SURFACE_Y),
-                (top_x + width, config.SEABED_Y),
-                (top_x - width, config.SEABED_Y),
-            ]
-            pygame.draw.polygon(self._godray_surf, (*config.GODRAY_COLOR, alpha), points)
-        target.blit(self._godray_surf, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+        """Draw soft, slowly swaying light shafts descending from the surface."""
+        for ray in self._godrays:
+            phase = ray["phase"] + self.time * config.GODRAY_SPEED * ray["speed"]
+            sway = math.sin(phase) * 26
+            # Gentle breathing of the beam's brightness.
+            brightness = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(phase * 0.6))
+            tilt = ray["tilt"] + math.sin(phase * 0.5) * 3
+            sprite = pygame.transform.rotate(self._godray_sprite, tilt)
+            # Modulate overall beam brightness (works on per-pixel-alpha surfaces).
+            sprite = sprite.copy()
+            mul = int(clamp(255 * brightness, 0, 255))
+            sprite.fill((255, 255, 255, mul), special_flags=pygame.BLEND_RGBA_MULT)
+            x = ray["base_x"] + sway - sprite.get_width() / 2
+            # Normal alpha blend: the beam's low per-pixel alpha keeps it soft.
+            target.blit(sprite, (x, config.WATER_SURFACE_Y))
 
     def _draw_plankton(self, target: pygame.Surface, offset: tuple[float, float]) -> None:
         for p in self.plankton:

@@ -35,6 +35,40 @@ def vertical_gradient(
     return surface
 
 
+def build_godray(
+    length: int,
+    top_w: int,
+    bottom_w: int,
+    color: tuple[int, int, int],
+    max_alpha: int,
+) -> pygame.Surface:
+    """Build one soft light shaft: bright near the surface, fading with depth.
+
+    The beam widens as it descends and has feathered horizontal edges, so
+    several of these blitted additively read as gentle god-rays rather than
+    hard white wedges. Built once and cached by the scene.
+    """
+    width = max(top_w, bottom_w) + 8
+    surf = pygame.Surface((width, length), pygame.SRCALPHA)
+    cx = width / 2
+    for y in range(length):
+        t = y / max(1, length - 1)
+        # Fade to nothing well before the seabed for an airy look.
+        vfade = max(0.0, 1.0 - (t / 0.82) ** 1.3)
+        row_alpha = max_alpha * vfade
+        if row_alpha <= 0.5:
+            continue
+        w = top_w + (bottom_w - top_w) * t
+        # Three feathered passes: wide+faint, mid, narrow+bright.
+        for frac, amul in ((1.0, 0.35), (0.6, 0.6), (0.3, 1.0)):
+            half = max(1.0, w * frac / 2)
+            a = int(row_alpha * amul)
+            if a <= 0:
+                continue
+            pygame.draw.line(surf, (*color, a), (cx - half, y), (cx + half, y))
+    return surf
+
+
 def radial_glow(
     radius: int,
     color: tuple[int, int, int],
