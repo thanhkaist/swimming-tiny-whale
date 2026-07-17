@@ -126,6 +126,9 @@ class Scene:
             ray_len, top_w=22, bottom_w=64,
             color=config.GODRAY_COLOR, max_alpha=config.GODRAY_MAX_ALPHA,
         )
+        self._vignette = art.build_vignette(
+            config.SCREEN_WIDTH, config.SCREEN_HEIGHT, config.VIGNETTE_STRENGTH
+        )
 
         self.plankton = [_Plankton(self._rng) for _ in range(config.PLANKTON_COUNT)]
         self.fish = [_FarFish(self._rng) for _ in range(config.FAR_FISH_COUNT)]
@@ -168,6 +171,10 @@ class Scene:
         self._draw_plankton(target, offset)
         self._draw_surface(target, offset)
         self._draw_seabed(target, offset)
+
+    def draw_vignette(self, target: pygame.Surface) -> None:
+        """Blit the soft corner vignette (call after gameplay entities)."""
+        target.blit(self._vignette, (0, 0))
 
     def _draw_godrays(self, target: pygame.Surface) -> None:
         """Draw soft, slowly swaying light shafts descending from the surface."""

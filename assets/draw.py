@@ -69,6 +69,27 @@ def build_godray(
     return surf
 
 
+def build_vignette(width: int, height: int, strength: int) -> pygame.Surface:
+    """Build a soft radial vignette (transparent centre, dark corners).
+
+    Rendered small then smooth-scaled to full size so the per-pixel distance
+    loop stays cheap. Blitted once per frame over the scene for depth/focus.
+    """
+    sw, sh = 80, 120
+    small = pygame.Surface((sw, sh), pygame.SRCALPHA)
+    cx, cy = sw / 2, sh / 2
+    max_d = (cx ** 2 + cy ** 2) ** 0.5
+    for y in range(sh):
+        for x in range(sw):
+            d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / max_d
+            # Clear until ~55% out, then ramp to full strength at the corners.
+            f = max(0.0, (d - 0.55) / 0.45)
+            alpha = int(min(1.0, f * f) * strength)
+            if alpha:
+                small.set_at((x, y), (6, 24, 34, alpha))
+    return pygame.transform.smoothscale(small, (width, height))
+
+
 def radial_glow(
     radius: int,
     color: tuple[int, int, int],

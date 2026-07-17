@@ -126,6 +126,8 @@ SHAKE_DECAY: float = 0.86           # Per-frame shake damping.
 FLASH_ON_HIT_ALPHA: int = 130       # White flash alpha on collision.
 FLASH_DECAY: int = 8                # Flash alpha reduction per frame.
 STATE_FADE_SPEED: int = 22          # Alpha step for screen transitions.
+VIGNETTE_STRENGTH: int = 115        # Max corner darkening alpha (0 disables).
+SCORE_POP_SCALE: float = 0.42       # Extra scale of the HUD number on a point.
 
 # --------------------------------------------------------------------------- #
 # Colors (RGB)  — soft underwater palette

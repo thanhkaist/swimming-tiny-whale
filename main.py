@@ -51,6 +51,7 @@ class Game:
         # Juice / transition state.
         self.shake = 0.0
         self.flash = 0.0
+        self.score_pop = 0.0          # 1→0 timer for the HUD score pop
         self.fade_alpha = 0            # black overlay for state transitions
         self._fade_target = 0
         self._pending_state: str | None = None
@@ -171,6 +172,7 @@ class Game:
         if self.shake < 0.15:
             self.shake = 0.0
         self.flash = max(0.0, self.flash - config.FLASH_DECAY * dt)
+        self.score_pop = max(0.0, self.score_pop - 0.06 * dt)
 
     def _update_title(self, dt: float) -> None:
         """Idle the whale bobbing on the title screen."""
@@ -189,6 +191,7 @@ class Game:
         gained = self.field.update(self.score, self.whale.x, dt)
         if gained:
             self.score += gained
+            self.score_pop = 1.0
             self.audio.play("score")
             self.particles.emit_score_pop(self.whale.x, self.whale.y - self.whale.height)
         self.particles.update(dt)
@@ -242,6 +245,8 @@ class Game:
         self.whale.draw(self.screen, offset)
         self.particles.draw(self.screen, self.fonts["medium"], offset)
 
+        self.scene.draw_vignette(self.screen)
+
         if self.state == config.STATE_TITLE:
             self._draw_title()
         elif self.state == config.STATE_PLAYING:
@@ -276,10 +281,28 @@ class Game:
         return rect
 
     def _draw_hud(self) -> None:
-        """Draw the live score at the top-centre."""
+        """Draw the live score at the top-centre with a pop on each point."""
         cx = config.SCREEN_WIDTH // 2
-        # Gentle pop scaling right after scoring.
-        self._text("huge", str(self.score), config.TEXT_COLOR, (cx, 92))
+        cy = 92
+        font = self.fonts["huge"]
+        text = str(self.score)
+        scale = 1.0 + config.SCORE_POP_SCALE * self.score_pop
+        shadow = font.render(text, True, config.TEXT_SHADOW)
+        base = font.render(text, True, config.TEXT_COLOR)
+        if scale != 1.0:
+            size = (max(1, int(base.get_width() * scale)), max(1, int(base.get_height() * scale)))
+            shadow = pygame.transform.smoothscale(shadow, size)
+            base = pygame.transform.smoothscale(base, size)
+        self.screen.blit(shadow, shadow.get_rect(center=(cx + 2, cy + 2)))
+        self.screen.blit(base, base.get_rect(center=(cx, cy)))
+
+        # Before the first flap, gently prompt the player to start.
+        if self.state == config.STATE_PLAYING and not self._started:
+            pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.12)
+            hint = self.fonts["medium"].render("Tap to swim!", True, config.TEXT_COLOR)
+            hint.set_alpha(int(120 + 135 * pulse))
+            rect = hint.get_rect(center=(cx, config.SCREEN_HEIGHT // 2 + 70))
+            self.screen.blit(hint, rect)
 
     def _draw_title(self) -> None:
         """Draw the title screen text with a gentle floating motion."""
