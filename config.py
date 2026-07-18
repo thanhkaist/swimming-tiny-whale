@@ -204,6 +204,7 @@ FLASH_DECAY: int = 8                # Flash alpha reduction per frame.
 LOCKED_FLASH_ALPHA: int = 70        # Gentle flash when a locked item is picked.
 STATE_FADE_SPEED: int = 22          # Alpha step for screen transitions.
 VIGNETTE_STRENGTH: int = 115        # Max corner darkening alpha (0 disables).
+PAUSE_OVERLAY_ALPHA: int = 150      # Dim overlay behind the pause text.
 SCORE_POP_SCALE: float = 0.42       # Extra scale of the HUD number on a point.
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +326,7 @@ DEFAULT_TRAIL: str = "none"         # Cosmetic trail selected on a fresh profile
 # --------------------------------------------------------------------------- #
 STATE_TITLE: str = "title"
 STATE_PLAYING: str = "playing"
+STATE_PAUSED: str = "paused"
 STATE_GAMEOVER: str = "gameover"
 STATE_LEADERBOARD: str = "leaderboard"
 STATE_MODESELECT: str = "modeselect"

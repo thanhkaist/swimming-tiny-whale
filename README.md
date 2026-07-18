@@ -47,6 +47,8 @@ core mechanics run headlessly for testing.
 |---------------------------|----------------------------------|
 | Swim up                   | **Space**, **↑**, **W**, or click |
 | Start / restart           | Same swim input                  |
+| Pause / resume            | **Esc** or **P** (tap/Space also resumes) |
+| Main menu (from game-over)| **Esc**                          |
 | Mode select               | **D** (from title)               |
 | Character select          | **C** (from title)               |
 | Shop                      | **S** (from title)               |
@@ -54,7 +56,7 @@ core mechanics run headlessly for testing.
 | Menu navigation           | **↑ / ↓**, **Enter** select, **Esc** back |
 | Enter initials (on board) | Type **A–Z / 0–9**, **Enter** to save, **Backspace** to fix |
 | Mute / unmute             | **M**                            |
-| Quit                      | **Esc**                          |
+| Quit                      | **Esc** (from the title), or close the window |
 
 The whale sinks constantly under gentle gravity — tap to give it an upward swim
 impulse and thread the gaps. Grab coins and power-ups; dodge jellyfish and mines.

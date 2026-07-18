@@ -117,6 +117,100 @@ def test_gameover_to_restart() -> None:
     assert game.state == config.STATE_PLAYING
 
 
+# --------------------------------------------------------------------------- #
+# Pause + main menu
+# --------------------------------------------------------------------------- #
+def _enter_play(game: Game) -> None:
+    """Drive title -> playing and take the first flap."""
+    _press_space()
+    _advance(game, 30)
+    assert game.state == config.STATE_PLAYING
+    game._started = True
+
+
+def test_p_pauses_and_space_resumes(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    _enter_play(game)
+    game.score = 4
+    _press_key(pygame.K_p)
+    game.handle_events()
+    assert game.state == config.STATE_PAUSED
+    _press_space()
+    game.handle_events()
+    assert game.state == config.STATE_PLAYING
+    assert game.score == 4  # run preserved, not reset
+
+
+def test_pause_freezes_gameplay(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    _enter_play(game)
+    game.whale.y = 300.0
+    game._pause()
+    y_before = game.whale.y
+    for _ in range(30):
+        game.update(dt=1.0)   # paused: gameplay must not advance
+    assert game.state == config.STATE_PAUSED
+    assert game.whale.y == y_before
+
+
+def test_esc_pauses_mid_run_not_quit(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    _enter_play(game)
+    _press_key(pygame.K_ESCAPE)
+    game.handle_events()
+    assert game.state == config.STATE_PAUSED
+    assert game.running  # Esc no longer quits mid-run
+
+
+def test_esc_resumes_from_pause(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    _enter_play(game)
+    game._pause()
+    _press_key(pygame.K_ESCAPE)
+    game.handle_events()
+    assert game.state == config.STATE_PLAYING
+
+
+def test_esc_from_gameover_goes_to_title(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    game.state = config.STATE_GAMEOVER
+    game.state_time = 60
+    _press_key(pygame.K_ESCAPE)
+    _advance(game, 40)
+    assert game.state == config.STATE_TITLE
+    assert game.running
+
+
+def test_esc_on_title_quits(temp_storage) -> None:  # noqa: ANN001
+    game = Game()
+    assert game.state == config.STATE_TITLE
+    _press_key(pygame.K_ESCAPE)
+    game.handle_events()
+    assert not game.running
+
+
+def test_gameover_menu_preserves_banked_coins(temp_storage) -> None:  # noqa: ANN001
+    import storage
+    from collectibles import Coin
+
+    game = Game()
+    game.start_run()
+    game.state = config.STATE_PLAYING
+    game._started = True
+    game.collectibles.items = [Coin(game.whale.x, game.whale.y)]
+    game.update(dt=1.0)                      # collect a coin
+    game.whale.y = config.SEABED_Y + 50
+    game.update(dt=1.0)                      # die -> banks coins
+    assert game.state == config.STATE_GAMEOVER
+    banked = storage.load_profile()["coins"]
+    assert banked >= config.COIN_VALUE
+    game.state_time = 60
+    _press_key(pygame.K_ESCAPE)
+    _advance(game, 40)
+    assert game.state == config.STATE_TITLE
+    assert storage.load_profile()["coins"] == banked  # unchanged
+
+
 def test_bounded_run_exits() -> None:
     game = Game()
     game.run(max_frames=20)  # must return, not hang

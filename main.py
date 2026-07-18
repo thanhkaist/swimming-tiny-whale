@@ -178,6 +178,26 @@ class Game:
             self.run_coins = 0
 
     # ------------------------------------------------------------------ #
+    # Pause / main-menu (instant state swaps — no fade, no run reset)
+    # ------------------------------------------------------------------ #
+    def _pause(self) -> None:
+        """Freeze an in-progress run (keeps all state; resumes exactly here)."""
+        if self.state == config.STATE_PLAYING and self._pending_state is None:
+            self.state = config.STATE_PAUSED
+            self.state_time = 0.0     # drives the overlay pulse
+
+    def _resume(self) -> None:
+        """Resume a paused run without resetting anything."""
+        if self.state == config.STATE_PAUSED:
+            self.state = config.STATE_PLAYING
+
+    def _to_main_menu(self) -> None:
+        """Return to the title from game-over (to reach the shop), banking coins."""
+        if self._pending_state is None:
+            self._bank_run_coins()    # no-op if already banked on death
+            self._begin_transition(config.STATE_TITLE)
+
+    # ------------------------------------------------------------------ #
     # Input
     # ------------------------------------------------------------------ #
     def _swim(self) -> None:
@@ -224,6 +244,23 @@ class Game:
             self.audio.toggle()
             return
 
+        # While paused, the resume keys unfreeze the run; ignore everything else.
+        if self.state == config.STATE_PAUSED:
+            if event.key in (pygame.K_ESCAPE, pygame.K_p, pygame.K_SPACE,
+                             pygame.K_UP, pygame.K_w):
+                self._resume()
+            return
+
+        # Esc/P pause an in-progress run (Esc no longer quits mid-run).
+        if self.state == config.STATE_PLAYING and event.key in (pygame.K_p, pygame.K_ESCAPE):
+            self._pause()
+            return
+
+        # Esc from game-over returns to the main menu (to visit the shop).
+        if self.state == config.STATE_GAMEOVER and event.key == pygame.K_ESCAPE:
+            self._to_main_menu()
+            return
+
         # List-selection screens capture all navigation keys.
         if self.state in self._MENU_STATES:
             self._handle_menu_key(event)
@@ -257,6 +294,9 @@ class Game:
         """Route a left-click based on the current state/sub-mode."""
         if self.name_entry_active:
             return  # clicks don't confirm initials (avoid accidental submits)
+        if self.state == config.STATE_PAUSED:
+            self._resume()
+            return
         if self.state in self._MENU_STATES:
             self._confirm_menu()
             return
@@ -431,6 +471,8 @@ class Game:
             self._update_title(dt)
         elif self.state == config.STATE_PLAYING:
             self._update_playing(dt)
+        elif self.state == config.STATE_PAUSED:
+            pass  # gameplay is frozen; only the backdrop/overlay animate
         elif self.state == config.STATE_GAMEOVER:
             self._update_gameover(dt)
         elif self.state in (config.STATE_LEADERBOARD, *self._MENU_STATES):
@@ -630,6 +672,9 @@ class Game:
             self._draw_title()
         elif self.state == config.STATE_PLAYING:
             self._draw_hud()
+        elif self.state == config.STATE_PAUSED:
+            self._draw_hud()
+            self._draw_pause()
         elif self.state == config.STATE_GAMEOVER:
             self._draw_hud()
             self._draw_gameover()
@@ -744,6 +789,20 @@ class Game:
         self._text("small", f"{self.coins} coins", config.COIN_COLOR,
                    (cx, config.SCREEN_HEIGHT - 108))
 
+    def _draw_pause(self) -> None:
+        """Dim the frozen scene and show a simple resume overlay."""
+        cx = config.SCREEN_WIDTH // 2
+        overlay = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+        overlay.fill((6, 24, 34))
+        overlay.set_alpha(config.PAUSE_OVERLAY_ALPHA)
+        self.screen.blit(overlay, (0, 0))
+
+        self._text("huge", "Paused", config.TEXT_COLOR, (cx, config.SCREEN_HEIGHT // 2 - 20))
+        pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.09)
+        prompt = self.fonts["medium"].render("Tap / Space / Esc to resume", True, config.TEXT_COLOR)
+        prompt.set_alpha(int(120 + 135 * pulse))
+        self.screen.blit(prompt, prompt.get_rect(center=(cx, config.SCREEN_HEIGHT // 2 + 40)))
+
     def _draw_gameover(self) -> None:
         """Draw the game-over panel: score, best/entry, and either name entry
         or the play-again / leaderboard prompts."""
@@ -780,9 +839,9 @@ class Game:
             pulse = 0.5 + 0.5 * math.sin(self.state_time * 0.09)
             prompt = self.fonts["small"].render("Tap / Space to play again", True, config.TEXT_COLOR)
             prompt.set_alpha(int(120 + 135 * pulse))
-            self.screen.blit(prompt, prompt.get_rect(center=(inner_cx, prect.bottom - 46)))
-            self._text("small", "L  ·  Leaderboard", config.TEXT_ACCENT,
-                       (inner_cx, prect.bottom - 22))
+            self.screen.blit(prompt, prompt.get_rect(center=(inner_cx, prect.bottom - 44)))
+            self._text("small", "L  Board      ·      Esc  Menu", config.TEXT_ACCENT,
+                       (inner_cx, prect.bottom - 20))
 
     def _draw_name_entry(self, prect: pygame.Rect) -> None:
         """Draw the arcade initials-entry UI inside the game-over panel."""
