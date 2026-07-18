@@ -712,6 +712,25 @@ class Game:
         self.screen.blit(img, rect)
         return rect
 
+    def _draw_footer(self, text: str, prect: pygame.Rect, dy: int = 24, pad: int = 34) -> None:
+        """Draw a centred hint line near the panel bottom, scaled to fit inside.
+
+        Menu hint lines can be wider than the panel; this shrinks them just
+        enough to sit within ``prect`` (minus ``pad``) so they never overflow.
+        """
+        font = self.fonts["small"]
+        img = font.render(text, True, config.TEXT_COLOR)
+        shadow = font.render(text, True, config.TEXT_SHADOW)
+        max_w = prect.width - pad
+        if img.get_width() > max_w:
+            scale = max_w / img.get_width()
+            size = (int(img.get_width() * scale), int(img.get_height() * scale))
+            img = pygame.transform.smoothscale(img, size)
+            shadow = pygame.transform.smoothscale(shadow, size)
+        cx, cy = prect.centerx, prect.bottom - dy
+        self.screen.blit(shadow, shadow.get_rect(center=(cx + 1, cy + 1)))
+        self.screen.blit(img, img.get_rect(center=(cx, cy)))
+
     def _draw_hud(self) -> None:
         """Draw the live score at the top-centre with a pop on each point."""
         cx = config.SCREEN_WIDTH // 2
@@ -960,8 +979,7 @@ class Game:
             tag_img.set_alpha(200 if selected else 130)
             self.screen.blit(tag_img, tag_img.get_rect(midleft=(left + 6, y + 14)))
 
-        self._text("small", "Up/Down choose   ·   Enter select   ·   Esc back",
-                   config.TEXT_COLOR, (inner_cx, prect.bottom - 24))
+        self._draw_footer("Up/Down choose    ·    Enter select    ·    Esc back", prect)
 
     def _char_preview(self, spec: "characters.WhaleSpec") -> pygame.Surface:
         """Return a cached small whale thumbnail for ``spec``."""
@@ -1015,8 +1033,7 @@ class Game:
             st_img = self.fonts["small"].render(status, True, scol)
             self.screen.blit(st_img, st_img.get_rect(midright=(right - 4, y - 14)))
 
-        self._text("small", "Up/Down choose   ·   Enter select   ·   Esc back",
-                   config.TEXT_COLOR, (inner_cx, prect.bottom - 22))
+        self._draw_footer("Up/Down choose    ·    Enter select    ·    Esc back", prect, dy=22)
 
     def _draw_shop(self) -> None:
         """Draw the shop: coin balance, buyable characters, and trails."""
@@ -1053,8 +1070,7 @@ class Game:
         if not self.shop_items:
             self._text("small", "Everything unlocked!", config.TEXT_COLOR,
                        (inner_cx, prect.centery))
-        self._text("small", "Enter buy/equip   ·   Esc back",
-                   config.TEXT_COLOR, (inner_cx, prect.bottom - 22))
+        self._draw_footer("Enter buy/equip    ·    Esc back", prect, dy=22)
 
     def _draw_flash(self) -> None:
         """White impact flash overlay."""
