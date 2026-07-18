@@ -79,9 +79,30 @@ Or set up fresh:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install pygame
+pip install -r requirements.txt
 python main.py
 ```
+
+## Windows executable
+
+A standalone single-file **`SwimmingTinyWhale.exe`** (no Python install needed)
+is built by GitHub Actions — see `.github/workflows/build-windows.yml`.
+
+- **Download a build:** open the repo's **Actions → Build Windows executable**,
+  pick a run, and grab the `SwimmingTinyWhale-windows` artifact. Runs happen on
+  pushes, on demand (**Run workflow**), and on version tags.
+- **Tagged releases:** pushing a tag like `v1.0` builds the exe and attaches it
+  to the matching GitHub Release automatically.
+- **Build it yourself** (on Windows):
+
+  ```bat
+  pip install -r requirements.txt pyinstaller
+  pyinstaller --noconfirm --clean SwimmingTinyWhale.spec
+  :: -> dist\SwimmingTinyWhale.exe
+  ```
+
+Save files (`highscore.json`, `leaderboard*.json`, `profile.json`) are written
+next to the `.exe`, so your progress persists between launches.
 
 ### Headless / smoke run
 

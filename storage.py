@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
 import config
 
@@ -20,7 +21,14 @@ Profile = dict
 
 
 def _here() -> str:
-    """Directory containing this module (where save files live)."""
+    """Directory where save files live.
+
+    In a PyInstaller build (``sys.frozen``) ``__file__`` points at a temporary
+    extraction dir that is wiped on exit, so saves are written next to the
+    executable instead. Running from source, it's this module's directory.
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.abspath(__file__))
 
 

@@ -1,0 +1,2 @@
+# Runtime dependency. (Standard library covers everything else.)
+pygame==2.6.1
